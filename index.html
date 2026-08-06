@@ -612,13 +612,13 @@ footer a{color:var(--verde)}
         <tr><td>Borrar un movimiento, un animal, un empleado</td><td>Sí</td><td>Sí</td><td>Sí</td></tr>
         <tr><td>Borrar una planilla, deshacer un pago o una venta</td><td>Sí</td><td>Sí</td><td>Sí</td></tr>
         <tr><td>Ver e imprimir todos los reportes</td><td>Sí</td><td>Sí</td><td>Sí</td></tr>
-        <tr><td>Bajar el respaldo <strong>cifrado</strong> (no se abre sin contraseña)</td>
+        <tr><td>Bajar una copia de la información</td>
           <td>Sí</td><td>Sí</td><td>Sí</td></tr>
-        <tr style="background:var(--rojo-cl)"><td><strong>Bajar el respaldo legible</strong> (sin protección)</td>
+        <tr style="background:var(--rojo-cl)"><td><strong>Bajar la copia legible</strong> (salarios y precios a la vista)</td>
           <td><strong>No</strong></td><td><strong>No</strong></td><td><strong>Sí</strong></td></tr>
         <tr style="background:var(--rojo-cl)"><td><strong>Borrar TODO / borrados masivos</strong></td>
           <td><strong>No</strong></td><td><strong>No</strong></td><td><strong>Sí</strong></td></tr>
-        <tr style="background:var(--rojo-cl)"><td><strong>Restaurar un respaldo</strong> (reemplaza todo)</td>
+        <tr style="background:var(--rojo-cl)"><td><strong>Restaurar una copia</strong> (reemplaza todo)</td>
           <td><strong>No</strong></td><td><strong>No</strong></td><td><strong>Sí</strong></td></tr>
         <tr style="background:var(--rojo-cl)"><td><strong>Agregar o quitar usuarios</strong></td>
           <td><strong>No</strong></td><td><strong>No</strong></td><td><strong>Sí</strong></td></tr>
@@ -702,94 +702,21 @@ footer a{color:var(--verde)}
     </div>
 
     <div class="card">
-      <h2>Respaldo en la nube — para no perder la información nunca</h2>
-      <p class="ayuda">La app guarda una copia cifrada <strong>cada vez que se anota algo</strong>, sola,
-        en la carpeta que le señales. Si esa carpeta es de Google&nbsp;Drive, la copia se sube a Drive
-        automáticamente y la información sobrevive aunque se dañe o se pierda la computadora.</p>
-
-      <div class="aviso verde">
-        <strong>Cómo dejarlo apuntando a Google Drive (se hace una sola vez):</strong><br>
-        1. Instalá <em>Google Drive para escritorio</em> y entrá con tu cuenta.<br>
-        2. En tu Drive creá una carpeta, por ejemplo <em>Finca Hilapo — Respaldos</em>.<br>
-        3. Acá abajo dale a <strong>Conectar carpeta de respaldo</strong> y elegí esa carpeta.<br>
-        4. Listo. Desde ese momento, cada cambio se guarda ahí y Drive lo sube solo.<br>
-        <span style="font-size:12.5px">Con OneDrive o Dropbox es igual: sirve cualquier carpeta que se
-        sincronice a la nube.</span>
-      </div>
-
-      <div class="aviso rojo">
-        <strong>Muy importante si van a usar la app en dos computadoras.</strong>
-        Cada computadora guarda su propia información por separado — <u>no se sincronizan entre ellas</u>.
-        Si vos anotás en la tuya y tu hermano anota en la de él el mismo día, quedan dos versiones
-        distintas y una va a pisar a la otra cuando restauren.<br>
-        <strong>La regla segura:</strong> que una sola persona anote, o que se pasen el respaldo y solo
-        anote quien lo tenga al día. La carpeta en Drive sirve para <em>no perder</em> la información,
-        no para que dos personas trabajen a la vez.
-      </div>
-      <div id="estadoRespaldo"></div>
+      <h2>Copias y restauración</h2>
+      <p class="ayuda">La base de datos se respalda sola todos los días. Esto es por si querés llevarte
+        tu información aparte, o volver atrás si alguien metió la pata en grande.</p>
       <div class="acciones">
-        <button class="b" id="btnCarpeta" onclick="conectarCarpeta()">Conectar carpeta de respaldo</button>
-        <button class="b gris" id="btnReactivar" style="display:none" onclick="reactivarCarpeta()">Reactivar la carpeta</button>
-        <button class="b gris" id="btnAhora" onclick="respaldarAhora()">Respaldar ahora</button>
-      </div>
-      <p class="ayuda" style="margin-top:10px">Por seguridad del navegador, al abrir la app de nuevo puede
-        pedir un clic en <em>Reactivar la carpeta</em>. Mientras no se reactive, la app sigue funcionando
-        pero no está respaldando.</p>
-    </div>
-
-    <div class="card">
-      <h2>Pasarle la app a otra persona</h2>
-      <p class="ayuda">La app no se abre con un link: es un archivo. Para que otra persona la use en su
-        computadora hay que mandarle <strong>dos cosas</strong>.</p>
-      <div class="aviso rojo">
-        <strong>No le mandes solo el archivo de la app.</strong> Si lo abre sin respaldo, le va a pedir
-        crear el primer usuario y <u>esa persona quedaría como Dueño</u>, con permiso para borrar todo.
-      </div>
-      <div class="aviso verde">
-        <strong>Pasos, en este orden:</strong><br>
-        1. Acá arriba, en <em>Usuarios</em>, creale su usuario y ponelo como <strong>Administrador</strong>.
-        Anotá la contraseña que le pusiste.<br>
-        2. Bajá el <strong>Respaldo cifrado</strong> (botón de abajo). Ese archivo lleva los usuarios,
-        los roles y toda la información.<br>
-        3. Mandale por correo o WhatsApp <strong>el archivo de la app</strong>
-        (<em>Contabilidad_Finca_Hilapo.html</em>) <strong>y el respaldo</strong>.<br>
-        4. Pasale la contraseña <strong>por otro medio</strong> — llamada o mensaje aparte, no en el mismo
-        correo donde va el respaldo.<br>
-        5. Él abre la app, le da a <strong>“Instalar desde un respaldo”</strong>, elige el archivo, y entra
-        con su usuario y contraseña. Queda como Administrador; vos seguís siendo el Dueño.
-      </div>
-      <div class="aviso">
-        <strong>Para que vos puedas revisar desde donde estés:</strong> que él conecte su carpeta de
-        respaldo a una carpeta de Google Drive que vos le compartas. Cada vez que anote algo, la copia
-        te llega sola. Vos bajás ese archivo y lo instalás en tu copia para revisar.<br>
-        <span style="font-size:12.5px">Acordate: mientras él anota, la copia buena es la de él. Si vos
-        anotás algo en la tuya al mismo tiempo, se pisan.</span>
-      </div>
-      <div class="acciones">
-        <button class="b" onclick="exportarCifrado()">Bajar respaldo cifrado para mandarle</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Respaldo manual</h2>
-      <p class="ayuda">Además del automático, podés bajar copias a mano y guardarlas en una USB o mandarlas
-        por correo.</p>
-      <div class="aviso rojo">
-        <strong>Si se olvida la contraseña, los datos cifrados no se recuperan.</strong> Por eso conviene
-        tener también un respaldo legible guardado en un lugar seguro.
-      </div>
-      <div class="acciones">
-        <button class="b" onclick="exportarCifrado()">Respaldo cifrado</button>
-        <button class="b gris" onclick="exportarPlano()">Respaldo legible (sin proteger)</button>
-        <button class="b gris" onclick="document.getElementById('impFile').click()">Restaurar respaldo</button>
+        <button class="b" onclick="exportarCifrado()">Bajar una copia</button>
+        <button class="b gris" onclick="exportarPlano()">Copia legible (sin proteger)</button>
+        <button class="b gris" onclick="document.getElementById('impFile').click()">Restaurar una copia</button>
         <input type="file" id="impFile" accept="application/json" style="display:none">
       </div>
       <div id="quePasa" style="margin-top:14px"></div>
 
       <h3 class="sec">Borrar datos</h3>
       <div id="avisoPermiso"></div>
-      <div class="aviso rojo">Antes de borrar, la app guarda sola una <strong>copia de seguridad fechada</strong>
-        en la carpeta de respaldo, y pide escribir la palabra BORRAR. Aun así, revisá dos veces.</div>
+      <div class="aviso rojo">Antes de borrar, la app te baja sola una <strong>copia de seguridad fechada</strong>
+        a Descargas, y pide escribir la palabra BORRAR. Aun así, revisá dos veces.</div>
       <div class="acciones" id="zonaBorrar">
         <button class="b rojo" onclick="borrarParte('planillas')">Borrar planillas y pagos</button>
         <button class="b rojo" onclick="borrarParte('empleados')">Borrar empleados y planillas</button>
@@ -805,9 +732,9 @@ footer a{color:var(--verde)}
         Esta lista NO se borra aunque se borre la información de la finca.</p>
       <div class="tabla-cont" id="tblBitacora"></div>
 
-      <p class="ayuda" style="margin-top:14px">El <strong>respaldo cifrado</strong> incluye los usuarios y
-        sus contraseñas: al restaurarlo se entra con las mismas de siempre. El <strong>respaldo legible</strong>
-        se puede abrir con cualquier programa — no lo dejes en una computadora compartida.</p>
+      <p class="ayuda" style="margin-top:14px">La <strong>copia legible</strong> se puede abrir con
+        cualquier programa y trae salarios y precios a la vista — no la dejés en una computadora compartida.
+        Solo el dueño la puede bajar.</p>
     </div>
   </section>
 </div>
@@ -815,7 +742,7 @@ footer a{color:var(--verde)}
 <footer>
   Tipo de cambio de referencia: Banco Central de Nicaragua ·
   <a href="https://www.bcn.gob.ni/node/10376" target="_blank" rel="noopener">C$36.6243 por US$1 (2026)</a><br>
-  Datos cifrados y guardados en este navegador. Bajá un respaldo cada cierto tiempo.
+  La información de la finca vive en la nube y se respalda sola todos los días.
 </footer>
 
 <script>
@@ -1503,11 +1430,9 @@ async function salir(){
 /* aviso permanente de dónde vive la información */
 function pintarEstadoNube(){
   const b=document.getElementById('bannerRespaldo'); if(!b)return;
-  b.innerHTML=`<div class="aviso verde" style="margin:0 0 12px">
-    <strong>Todo se guarda solo en la nube.</strong> No hay que respaldar nada a mano
-    y no se pierde aunque se dañe esta computadora.
-    <button class="b gris" style="margin-left:10px;padding:5px 12px"
-      onclick="refrescar()">Traer lo último</button></div>`;
+  b.innerHTML=`<div style="text-align:right;margin:0 0 8px">
+    <button class="b gris" style="padding:5px 14px;font-size:13px"
+      onclick="refrescar()" title="Trae lo que los demás hayan anotado">Traer lo último</button></div>`;
 }
 
 /* bloqueo automático por inactividad (30 min) */
