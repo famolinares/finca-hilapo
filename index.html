@@ -1396,7 +1396,66 @@ async function sesionAdentro(user){
 }
 
 /* ¿ya había sesión abierta de antes? entonces no pedir contraseña */
+/* ---- PONER CONTRASEÑA NUEVA ----
+   Cuando alguien llega desde el correo de "Olvidé mi contraseña", Supabase
+   lo deja adentro pero NO le cambia la clave. Hay que pedírsela aquí.     */
+function pedirClaveNueva(){
+  const a=document.getElementById('acceso');
+  a.style.display='flex';
+  document.body.classList.add('bloqueado');
+  ['pantallaEntrar','pantallaNoSoporte'].forEach(p=>{
+    const el=document.getElementById(p); if(el) el.style.display='none';});
+  let c=document.getElementById('pantallaNueva');
+  if(!c){
+    c=document.createElement('div'); c.id='pantallaNueva';
+    c.innerHTML='<h1>Poné tu contraseña nueva</h1>'+
+      '<p class="sub">Escribila dos veces. Es la que vas a usar de ahora en adelante.</p>'+
+      '<label>Contraseña nueva (mínimo 8 caracteres)</label>'+
+      '<input type="password" id="rcP1" autocomplete="new-password">'+
+      '<label>Repetirla</label>'+
+      '<input type="password" id="rcP2" autocomplete="new-password">'+
+      '<button class="b" id="btnGuardarClave">Guardar y entrar</button>'+
+      '<div class="err" id="errNueva"></div>';
+    (a.querySelector('.caja')||a).appendChild(c);
+    document.getElementById('btnGuardarClave').addEventListener('click',guardarClaveNueva);
+    ['rcP1','rcP2'].forEach(id=>document.getElementById(id)
+      .addEventListener('keydown',e=>{if(e.key==='Enter')guardarClaveNueva();}));
+  }
+  c.style.display='block';
+  const f=document.getElementById('rcP1'); if(f) f.focus();
+}
+
+async function guardarClaveNueva(){
+  limpiarErr('errNueva');
+  const p1=document.getElementById('rcP1').value, p2=document.getElementById('rcP2').value;
+  if(p1.length<8)  return errar('errNueva','La contraseña necesita al menos 8 caracteres.');
+  if(p1!==p2)      return errar('errNueva','Las dos contraseñas no son iguales.');
+  const b=document.getElementById('btnGuardarClave');
+  if(b){b.disabled=true;b.textContent='Guardando…';}
+  try{
+    const {error}=await SB.auth.updateUser({password:p1});
+    if(error) throw new Error(error.message);
+    history.replaceState(null,'',location.pathname);
+    document.getElementById('pantallaNueva').style.display='none';
+    alert('Contraseña cambiada. Ya estás adentro.');
+    const {data}=await SB.auth.getSession();
+    if(data&&data.session&&data.session.user) await sesionAdentro(data.session.user);
+    else mostrarPantalla('pantallaEntrar');
+  }catch(e){ errar('errNueva','No se pudo cambiar: '+e.message); }
+  finally{ if(b){b.disabled=false;b.textContent='Guardar y entrar';} }
+}
+
+/* Supabase avisa cuando alguien entró por el enlace de recuperación */
+SB.auth.onAuthStateChange((evento)=>{
+  if(evento==='PASSWORD_RECOVERY') pedirClaveNueva();
+});
+
 async function arranque(){
+  /* si viene del correo de recuperacion, primero la contraseña nueva */
+  if(location.hash && location.hash.indexOf('type=recovery')!==-1){
+    pedirClaveNueva();
+    return;
+  }
   try{
     const { data } = await SB.auth.getSession();
     if(data && data.session && data.session.user){
