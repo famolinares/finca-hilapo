@@ -3,8 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Finca Hilapo — Contabilidad — Finca Hilapo</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<title>Contabilidad — Finca Hilapo</title>
 <style>
 :root{
   --verde:#2e6b2e; --verde-osc:#1f4a1f; --verde-cl:#e8f2e8; --verde-borde:#c3ddc3;
@@ -123,21 +122,44 @@ footer a{color:var(--verde)}
 <!-- ==================== ACCESO ==================== -->
 <div id="acceso">
   <div class="caja">
+    <!-- primer uso -->
+    <div id="pantallaCrear" style="display:none">
+      <h1>Finca Hilapo</h1>
+      <p class="sub">Primera vez. Creá el usuario administrador de la finca.</p>
+      <div class="aviso rojo">
+        <strong>Guardá bien esta contraseña.</strong> Los datos se guardan cifrados con ella.
+        Si se olvida, no hay forma de recuperarlos — ni yo ni nadie puede abrirlos.
+      </div>
+      <label>Usuario</label>
+      <input type="text" id="nuU" placeholder="ej. mama" autocomplete="username">
+      <label>Contraseña (mínimo 6 caracteres)</label>
+      <input type="password" id="nuP" autocomplete="new-password">
+      <label>Repetir contraseña</label>
+      <input type="password" id="nuP2" autocomplete="new-password">
+      <button class="b" onclick="crearPrimero()">Crear y entrar</button>
+      <div class="err" id="errCrear"></div>
+      <p class="nota"><strong>¿Te mandaron la app junto con un archivo de respaldo?</strong><br>
+        No creés un usuario nuevo — instalá el respaldo y entrá con la contraseña que te dieron.</p>
+      <button class="b gris" style="width:100%;margin-top:8px"
+        onclick="document.getElementById('instFile').click()">Instalar desde un respaldo</button>
+    </div>
+
     <!-- login -->
     <div id="pantallaEntrar" style="display:none">
       <h1>Finca Hilapo</h1>
-      <p class="sub">Contabilidad de la finca &middot; San Ram&oacute;n, Matagalpa</p>
-      <label>Correo</label>
-      <input type="email" id="loU" autocomplete="username" placeholder="tucorreo@gmail.com">
-      <label>Contrase&ntilde;a</label>
+      <p class="sub">Contabilidad de la finca · San Ramón, Matagalpa</p>
+      <label>Usuario</label>
+      <input type="text" id="loU" autocomplete="username">
+      <label>Contraseña</label>
       <input type="password" id="loP" autocomplete="current-password">
-      <button class="b" id="btnEntrar" onclick="entrar()">Entrar</button>
+      <button class="b" onclick="entrar()">Entrar</button>
       <div class="err" id="errEntrar"></div>
-      <p class="nota" style="text-align:center">
-        <a href="javascript:void(0)" onclick="olvideClave()">Olvid&eacute; mi contrase&ntilde;a</a></p>
-      <p class="nota">La informaci&oacute;n de la finca vive en la nube. Entr&aacute;s desde
-        cualquier computadora o tel&eacute;fono y ves siempre lo &uacute;ltimo.</p>
+      <p class="nota">Los datos están cifrados con la contraseña. Sin ella no se pueden leer,
+        ni abriendo el archivo con otro programa.</p>
+      <button class="b gris" style="width:100%;margin-top:8px"
+        onclick="document.getElementById('instFile').click()">Instalar desde un respaldo</button>
     </div>
+    <input type="file" id="instFile" accept="application/json" style="display:none">
 
     <!-- navegador sin soporte -->
     <div id="pantallaNoSoporte" style="display:none">
@@ -227,7 +249,7 @@ footer a{color:var(--verde)}
     <div class="sesion">
       <span class="u" id="sesionU">—</span>
       <button onclick="salir()">Salir</button>
-      <span class="guardado" id="estadoGuardado">Conectado a la base de datos</span>
+      <span class="guardado" id="estadoGuardado">Datos cifrados en este navegador</span>
     </div>
   </div>
 </header>
@@ -821,26 +843,63 @@ footer a{color:var(--verde)}
 <script>
 'use strict';
 /* ========================================================================
-   CONEXIÓN A LA BASE DE DATOS  (Supabase / Postgres)
-   La información ya NO vive en este navegador: vive en un servidor.
-   Norvin anota en la finca y Fausto lo ve al instante desde cualquier
-   aparato. No hay copias que se pisen, no hay que restaurar nada.
-
-   Estas dos llaves son públicas a propósito. Lo que protege los datos
-   son las reglas de permisos que viven DENTRO de la base de datos:
-   aunque alguien modifique esta página, Postgres le dice que no.
+   ALMACENAMIENTO Y CIFRADO
+   Clave maestra al azar que cifra los datos (AES-GCM 256).
+   Esa clave se guarda "envuelta" con la contraseña de cada usuario
+   (PBKDF2-SHA256, 250 mil vueltas). Así varios usuarios abren los mismos
+   datos, cada uno con su propia contraseña, y nadie más los puede leer.
    ======================================================================== */
-const SUPA_URL  = 'https://cidsfeqqivzyvmnbjepu.supabase.co';
-const SUPA_KEY  = 'sb_publishable_FENasjne4VuLoLcMZb22MQ_HEcMvn82';
-const SB = window.supabase.createClient(SUPA_URL, SUPA_KEY, {
-  auth: { persistSession: true, autoRefreshToken: true }
-});
+const K_USERS='fincaHilapo_usuarios', K_DATA='fincaHilapo_datos';
+const ITER=250000;
+const cripto = (window.crypto && window.crypto.subtle) ? window.crypto : null;
 
-/* el rol viaja desde la base de datos, no desde esta página */
-const esDueno   = () => !!USR && USR.rol === 'dueño';
-const puedeAdmin= () => !!USR && (USR.rol === 'dueño' || USR.rol === 'admin');
-const ROL_APP   = r => (r === 'dueno' ? 'dueño' : r);
-const ROL_DB    = r => (r === 'dueño' ? 'dueno' : r);
+const b64=b=>btoa(String.fromCharCode(...new Uint8Array(b)));
+const deB64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+const azar=n=>crypto.getRandomValues(new Uint8Array(n));
+
+async function claveDe(pass,salt,iter){
+  const base=await cripto.subtle.importKey('raw',new TextEncoder().encode(pass),'PBKDF2',false,['deriveKey']);
+  return cripto.subtle.deriveKey({name:'PBKDF2',salt:salt,iterations:iter,hash:'SHA-256'},
+    base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+}
+async function cifrar(clave,texto){
+  const iv=azar(12);
+  const ct=await cripto.subtle.encrypt({name:'AES-GCM',iv},clave,new TextEncoder().encode(texto));
+  return {iv:b64(iv),ct:b64(ct)};
+}
+async function descifrar(clave,paq){
+  const pt=await cripto.subtle.decrypt({name:'AES-GCM',iv:deB64(paq.iv)},clave,deB64(paq.ct));
+  return new TextDecoder().decode(pt);
+}
+async function importarMaestra(bytes){
+  return cripto.subtle.importKey('raw',bytes,{name:'AES-GCM',length:256},true,['encrypt','decrypt']);
+}
+async function envolver(maestraBytes,pass){
+  const salt=azar(16);
+  const kc=await claveDe(pass,salt,ITER);
+  const paq=await cifrar(kc,b64(maestraBytes));
+  return {salt:b64(salt),iter:ITER,paq:paq};
+}
+async function desenvolver(reg,pass){
+  const kc=await claveDe(pass,deB64(reg.salt),reg.iter||ITER);
+  const raw=await descifrar(kc,reg.paq);          // lanza si la contraseña está mala
+  return deB64(raw);
+}
+
+function leerUsuarios(){
+  try{
+    const a=JSON.parse(localStorage.getItem(K_USERS))||null;
+    /* archivos de versiones anteriores: el primer usuario pasa a ser el dueño */
+    if(a&&a.usuarios&&a.usuarios.length&&!a.usuarios.some(x=>x.rol==='dueño')){
+      a.usuarios[0].rol='dueño';
+      localStorage.setItem(K_USERS,JSON.stringify(a));
+    }
+    return a;
+  }catch(e){return null;}
+}
+const esDueno=()=>!!USR&&USR.rol==='dueño';
+const puedeAdmin=()=>!!USR&&(USR.rol==='dueño'||USR.rol==='admin');
+function escribirUsuarios(u){localStorage.setItem(K_USERS,JSON.stringify(u));}
 
 /* ======================= ESTADO EN MEMORIA ======================= */
 const LOTES_DEF=[
@@ -900,6 +959,7 @@ const DESTINOS=[
 const nomDestino=v=>(DESTINOS.find(d=>d.v===v)||DESTINOS[0]).n;
 
 let D=JSON.parse(JSON.stringify(DEF));
+let MAESTRA=null;      // CryptoKey en memoria; se pierde al salir
 let USR=null;          // {u, rol}
 
 function normalizar(d){
@@ -963,260 +1023,205 @@ const razas=()=>[...new Set(D.ani.map(a=>(a.raza||'').trim()).filter(Boolean))]
 let cola=Promise.resolve();
 function guardar(){
   cola=cola.then(async()=>{
-    if(!USR)return;
-    await sincronizar();
-    aviso('Guardado en la nube \u2713');
-  }).catch(e=>{aviso('NO SE GUARD\u00d3 \u2014 revis\u00e1 el internet');console.error(e);
-    alert('No se pudo guardar en la nube.\n\n'+e.message+
-      '\n\nRevis\u00e1 la conexi\u00f3n a internet y volv\u00e9 a intentar. '+
-      'Lo que est\u00e1 en pantalla todav\u00eda no est\u00e1 guardado.');});
+    if(!MAESTRA)return;
+    const paq=await cifrar(MAESTRA,JSON.stringify(D));
+    localStorage.setItem(K_DATA,JSON.stringify(paq));
+    aviso('Guardado ✓');
+    programarRespaldo();
+  }).catch(e=>{aviso('No se pudo guardar');console.error(e);});
   return cola;
 }
+
 /* ================================================================
-   MOTOR DE SINCRONIZACIÓN
-   Toda la app sigue trabajando contra el objeto D en memoria, igual
-   que antes. Lo único que cambia es que al guardar, en vez de escribir
-   en el navegador, se compara D contra la última foto sincronizada y
-   se mandan a la base de datos SOLO los cambios: lo nuevo, lo corregido
-   y lo borrado. Por eso no hubo que tocar el resto de la aplicación.
+   RESPALDO AUTOMÁTICO A UNA CARPETA DEL DISCO
+   Para que la información no dependa solo del navegador: si se borra
+   el historial o se daña la máquina, la copia sigue en la carpeta
+   (y en la nube, si la carpeta es de Drive / OneDrive / Dropbox).
    ================================================================ */
-let FOTO = null;          // última foto confirmada por la base de datos
-const clonar = o => JSON.parse(JSON.stringify(o));
+const K_ULT='fincaHilapo_ultimoRespaldo', K_DIRNOM='fincaHilapo_carpetaNombre';
+const FSA = (typeof window.showDirectoryPicker==='function');
+let CARPETA=null, CARPETA_PERSISTE=true;
 
-/* --- traducción entre los nombres de la app y los de la base --- */
-const oNull = v => (v === '' || v === undefined) ? null : v;
-
-const MAPA = {
-  ani: { tabla:'animales', hacia:a=>({
-          id:a.id, arete:a.arete, nombre:a.nombre||'', sexo:a.sexo, raza:a.raza||'',
-          fnac:oNull(a.fnac), lote_id:oNull(a.lote), madre:a.madre||'',
-          partos:+a.partos||0, manejo:a.manejo||'seca', litros:+a.litros||0,
-          prenada:!!a.prenada, f_servicio:oNull(a.fServicio),
-          destino:a.destino||'inventario', valor:+a.valor||0, obs:a.obs||'',
-          estado:a.estado||'Activa', usr:a.usr||'' }),
-        desde:r=>({
-          id:r.id, arete:r.arete, nombre:r.nombre||'', sexo:r.sexo, raza:r.raza||'',
-          fnac:r.fnac||'', lote:r.lote_id||'', madre:r.madre||'',
-          partos:+r.partos||0, manejo:r.manejo, litros:+r.litros||0,
-          prenada:!!r.prenada, fServicio:r.f_servicio||'', destino:r.destino,
-          valor:+r.valor||0, obs:r.obs||'', estado:r.estado, usr:r.usr||'', hist:[] }) },
-
-  mov: { tabla:'movimientos', hacia:m=>({
-          id:m.id, fecha:m.fecha, tipo:m.tipo, cat:m.cat, descr:m.desc||'',
-          monto:+m.monto||0, litros:m.litros==null?null:+m.litros,
-          precio_l:m.precioL==null?null:+m.precioL, usr:m.usr||'' }),
-        desde:r=>{ const m={id:r.id,fecha:r.fecha,tipo:r.tipo,cat:r.cat,
-          desc:r.descr||'',monto:+r.monto||0,usr:r.usr||''};
-          if(r.litros!=null)m.litros=+r.litros;
-          if(r.precio_l!=null)m.precioL=+r.precio_l;
-          return m; } },
-
-  emp: { tabla:'empleados', hacia:e=>({
-          id:e.id, nombre:e.nombre, apellido:e.apellido||'', cargo:e.cargo||'',
-          salario_q:+e.salarioQ||0, ingreso:oNull(e.ingreso), contacto:e.contacto||'',
-          notas:e.notas||'', estado:e.estado||'activo', usr:e.usr||'' }),
-        desde:r=>({ id:r.id, nombre:r.nombre, apellido:r.apellido||'', cargo:r.cargo||'',
-          salarioQ:+r.salario_q||0, ingreso:r.ingreso||'', contacto:r.contacto||'',
-          notas:r.notas||'', estado:r.estado, usr:r.usr||'' }) },
-
-  lotes:{ tabla:'lotes', hacia:l=>({ id:l.id, nombre:l.nombre, nota:l.nota||'' }),
-          desde:r=>({ id:r.id, nombre:r.nombre, nota:r.nota||'' }) },
-
-  ventas:{ tabla:'ventas', hacia:v=>({
-          id:v.id, nombre:v.nombre||'', fecha:v.fecha, comprador:v.comprador||'',
-          notas:v.notas||'', total:+v.total||0, libros:+v.libros||0,
-          mov_id:oNull(v.movId), usr:v.usr||'' }),
-        desde:r=>({ id:r.id, nombre:r.nombre||'', fecha:r.fecha, comprador:r.comprador||'',
-          notas:r.notas||'', total:+r.total||0, libros:+r.libros||0,
-          movId:r.mov_id||'', usr:r.usr||'', creada:(r.creada||'').slice(0,10), lineas:[] }) },
-
-  bitacora:{ tabla:'bitacora', hacia:b=>({
-          id:b.id, cuando:b.cuando||new Date().toISOString(),
-          usr:b.usr||'', accion:b.accion, detalle:b.detalle||'' }),
-        desde:r=>({ id:r.id, cuando:r.cuando, usr:r.usr||'',
-          accion:r.accion, detalle:r.detalle||'' }) }
-};
-
-/* ------------------------- LECTURA ------------------------- */
-async function traer(tabla, orden){
-  const q = SB.from(tabla).select('*');
-  const { data, error } = orden ? await q.order(orden) : await q;
-  if(error) throw new Error(`No se pudo leer ${tabla}: ${error.message}`);
-  return data || [];
-}
-
-async function cargarTodo(){
-  const [cfg, lotes, ani, hist, mov, emp, pla, plin, car, ven, vlin, bit] =
-    await Promise.all([
-      traer('config'), traer('lotes','orden'), traer('animales','arete'),
-      traer('animal_hist','fecha'), traer('movimientos','fecha'),
-      traer('empleados','nombre'), traer('planillas','periodo'),
-      traer('planilla_lineas'), traer('carrito'), traer('ventas','fecha'),
-      traer('venta_lineas'), traer('bitacora','cuando')
-    ]);
-
-  const c = cfg[0] || {};
-  D = {
-    config:{ tc:+c.tc||36.6243, destete:+c.destete||6, vaquilla:+c.vaquilla||12,
-             vientre:+c.vientre||18, partos:+c.partos||5, litrosMin:+c.litros_min||5,
-             dias:+c.dias||30, precio:+c.precio||0, gestacion:+c.gestacion||283 },
-    lotes: lotes.map(MAPA.lotes.desde),
-    ani:   ani.map(MAPA.ani.desde),
-    mov:   mov.map(MAPA.mov.desde),
-    emp:   emp.map(MAPA.emp.desde),
-    planillas: [], carrito: [], ventas: ven.map(MAPA.ventas.desde),
-    bitacora: bit.map(MAPA.bitacora.desde)
-  };
-
-  /* historial dentro de cada animal */
-  const porAnimal = {};
-  hist.forEach(h => (porAnimal[h.animal_id] = porAnimal[h.animal_id] || [])
-    .push({ id:h.id, f:h.fecha, t:h.texto, tipo:h.tipo, usr:h.usr||'' }));
-  D.ani.forEach(a => { a.hist = porAnimal[a.id] || []; });
-
-  /* planillas con sus líneas */
-  const porPlanilla = {};
-  plin.forEach(l => (porPlanilla[l.planilla_id] = porPlanilla[l.planilla_id] || []).push({
-    id:l.id, empId:l.empleado_id||'', nombre:l.nombre||'', cargo:l.cargo||'',
-    salarioQ:+l.salario_q||0, dias:+l.dias||0, monto:+l.monto||0, nota:l.nota||'',
-    pagado:!!l.pagado, fechaPago:l.fecha_pago||'', movId:l.mov_id||'',
-    usrPago:l.usr_pago||'' }));
-  D.planillas = pla.map(p => ({
-    id:p.id, periodo:p.periodo, periodoTxt:p.periodo_txt, anio:p.anio, mes:p.mes,
-    q:p.q, diasBase:+p.dias_base||15, usr:p.usr||'',
-    creada:(p.creada||'').slice(0,10), lineas: porPlanilla[p.id] || [] }));
-
-  /* carrito */
-  D.carrito = car.map(c2 => ({ id:c2.animal_id, aniId:c2.animal_id,
-    peso:+c2.peso||0, precioLb:+c2.precio_lb||0, precio:+c2.precio||0 }));
-
-  /* líneas de cada venta */
-  const porVenta = {};
-  vlin.forEach(l => (porVenta[l.venta_id] = porVenta[l.venta_id] || []).push({
-    id:l.id, aniId:l.animal_id||'', arete:l.arete, nombre:l.nombre||'',
-    categoria:l.categoria||'', raza:l.raza||'', peso:+l.peso||0,
-    precioLb:+l.precio_lb||0, precio:+l.precio||0, valorLibro:+l.valor_libro||0 }));
-  D.ventas.forEach(v => { v.lineas = porVenta[v.id] || []; });
-
-  FOTO = clonar(D);
-}
-
-/* ------------------------- ESCRITURA ------------------------- */
-/* compara la lista de antes con la de ahora y devuelve qué cambió */
-function diferencia(antes, ahora, clave){
-  antes = antes || []; ahora = ahora || [];
-  const k = clave || 'id';
-  const mapaAntes = {}; antes.forEach(x => mapaAntes[x[k]] = x);
-  const idsAhora = new Set(ahora.map(x => x[k]));
-  const nuevosOcambiados = ahora.filter(x => {
-    const v = mapaAntes[x[k]];
-    return !v || JSON.stringify(v) !== JSON.stringify(x);
-  });
-  const borrados = antes.filter(x => !idsAhora.has(x[k])).map(x => x[k]);
-  return { subir: nuevosOcambiados, borrar: borrados };
-}
-
-async function subir(tabla, filas){
-  if(!filas.length) return;
-  const { error } = await SB.from(tabla).upsert(filas);
-  if(error) throw new Error(`No se pudo guardar en ${tabla}: ${error.message}`);
-}
-async function borrar(tabla, ids, campo){
-  if(!ids.length) return;
-  const { error } = await SB.from(tabla).delete().in(campo || 'id', ids);
-  if(error) throw new Error(`No se pudo borrar en ${tabla}: ${error.message}`);
-}
-
-/* aplana las listas que viven dentro de otra (historial, líneas) */
-function aplanar(padres, campo, arma){
-  const out = [];
-  (padres || []).forEach(p => (p[campo] || []).forEach(h => out.push(arma(p, h))));
-  return out;
-}
-
-async function sincronizar(){
-  if(!FOTO) return;
-
-  /* --- las listas sencillas --- */
-  for(const llave of ['lotes','ani','mov','emp','ventas','bitacora']){
-    const m = MAPA[llave];
-    const d = diferencia(FOTO[llave], D[llave]);
-    await subir(m.tabla, d.subir.map(m.hacia));
-    await borrar(m.tabla, d.borrar);
-  }
-
-  /* --- historial por animal --- */
-  const histAntes = aplanar(FOTO.ani,'hist',(a,h)=>({...h, _p:a.id}));
-  const histAhora = aplanar(D.ani,   'hist',(a,h)=>({...h, _p:a.id}));
-  const dh = diferencia(histAntes, histAhora);
-  await subir('animal_hist', dh.subir.map(h=>({
-    id:h.id, animal_id:h._p, fecha:h.f, tipo:h.tipo||'evento',
-    texto:h.t, usr:h.usr||'' })));
-  await borrar('animal_hist', dh.borrar);
-
-  /* --- planillas y sus líneas --- */
-  const dp = diferencia(
-    (FOTO.planillas||[]).map(p=>({...p, lineas:undefined})),
-    (D.planillas||[]).map(p=>({...p, lineas:undefined})));
-  await subir('planillas', dp.subir.map(p=>({
-    id:p.id, periodo:p.periodo, periodo_txt:p.periodoTxt||'', anio:p.anio,
-    mes:p.mes, q:p.q, dias_base:+p.diasBase||15, usr:p.usr||'' })));
-  await borrar('planillas', dp.borrar);
-
-  const linAntes = aplanar(FOTO.planillas,'lineas',(p,l)=>({...l, _p:p.id}));
-  const linAhora = aplanar(D.planillas,   'lineas',(p,l)=>({...l, _p:p.id}));
-  const dl = diferencia(linAntes, linAhora);
-  await subir('planilla_lineas', dl.subir.map(l=>({
-    id:l.id, planilla_id:l._p, empleado_id:oNull(l.empId), nombre:l.nombre||'',
-    cargo:l.cargo||'', salario_q:+l.salarioQ||0, dias:+l.dias||0,
-    monto:+l.monto||0, nota:l.nota||'', pagado:!!l.pagado,
-    fecha_pago:oNull(l.fechaPago), mov_id:oNull(l.movId),
-    usr_pago:l.usrPago||'' })));
-  await borrar('planilla_lineas', dl.borrar);
-
-  /* --- líneas de venta --- */
-  const vlAntes = aplanar(FOTO.ventas,'lineas',(v,l)=>({...l, _p:v.id}));
-  const vlAhora = aplanar(D.ventas,   'lineas',(v,l)=>({...l, _p:v.id}));
-  const dv = diferencia(vlAntes, vlAhora);
-  await subir('venta_lineas', dv.subir.map(l=>({
-    id:l.id||crypto.randomUUID(), venta_id:l._p, animal_id:oNull(l.aniId),
-    arete:l.arete||'', nombre:l.nombre||'', categoria:l.categoria||'',
-    raza:l.raza||'', peso:+l.peso||0, precio_lb:+l.precioLb||0,
-    precio:+l.precio||0, valor_libro:+l.valorLibro||0 })));
-  await borrar('venta_lineas', dv.borrar);
-
-  /* --- carrito --- */
-  const dc = diferencia(FOTO.carrito, D.carrito, 'aniId');
-  await subir('carrito', dc.subir.map(c=>({
-    animal_id:c.aniId, peso:+c.peso||0, precio_lb:+c.precioLb||0,
-    precio:+c.precio||0, usr:(USR&&USR.u)||'' })));
-  await borrar('carrito', dc.borrar, 'animal_id');
-
-  /* --- config --- */
-  if(JSON.stringify(FOTO.config) !== JSON.stringify(D.config)){
-    const c = D.config;
-    const { error } = await SB.from('config').update({
-      tc:+c.tc, destete:+c.destete, vaquilla:+c.vaquilla, vientre:+c.vientre,
-      partos:+c.partos, litros_min:+c.litrosMin, dias:+c.dias,
-      precio:+c.precio, gestacion:+c.gestacion }).eq('id',1);
-    if(error) throw new Error('No se pudo guardar la configuración: '+error.message);
-  }
-
-  FOTO = clonar(D);
-}
-
-/* --- refrescar: traer lo que el otro haya anotado --- */
-async function refrescar(){
+/* Cuando la app se abre como archivo local (file://), Chrome no deja usar
+   IndexedDB. Eso NO impide conectar la carpeta: solo impide recordarla de
+   una vez para la otra. Por eso nada de esto puede tumbar la conexión. */
+function idb(){return new Promise((res,rej)=>{
   try{
-    await cargarTodo();
-    if(typeof pintar === 'function') pintar();
-    aviso('Al día ✓');
-  }catch(e){ console.error(e); aviso('No se pudo actualizar'); }
+    if(!window.indexedDB)return rej(new Error('sin indexedDB'));
+    const r=indexedDB.open('fincaHilapo',1);
+    r.onupgradeneeded=()=>{r.result.createObjectStore('kv');};
+    r.onsuccess=()=>res(r.result);
+    r.onerror=()=>rej(r.error||new Error('indexedDB bloqueado'));
+    r.onblocked=()=>rej(new Error('indexedDB bloqueado'));
+  }catch(e){rej(e);}});}
+async function idbSet(k,v){
+  try{
+    const db=await idb();
+    return await new Promise((res,rej)=>{
+      const t=db.transaction('kv','readwrite');t.objectStore('kv').put(v,k);
+      t.oncomplete=()=>res(true);t.onerror=()=>rej(t.error);});
+  }catch(e){return false;}}
+async function idbGet(k){
+  try{
+    const db=await idb();
+    return await new Promise((res,rej)=>{
+      const t=db.transaction('kv','readonly'),q=t.objectStore('kv').get(k);
+      q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});
+  }catch(e){return null;}}
+
+async function permisoCarpeta(pedir){
+  if(!CARPETA)return false;
+  try{
+    const o={mode:'readwrite'};
+    let p=await CARPETA.queryPermission(o);
+    if(p==='granted')return true;
+    if(pedir){p=await CARPETA.requestPermission(o);return p==='granted';}
+    return false;
+  }catch(e){return false;}
+}
+function paquete(){
+  return {tipo:'finca-hilapo-cifrado',v:1,fecha:new Date().toISOString(),
+          usuarios:leerUsuarios(),datos:JSON.parse(localStorage.getItem(K_DATA)||'null')};
+}
+async function escribirRespaldo(){
+  if(!CARPETA||!MAESTRA)return false;
+  if(!(await permisoCarpeta(false)))return false;
+  const txt=JSON.stringify(paquete(),null,2);
+  const poner=async n=>{const fh=await CARPETA.getFileHandle(n,{create:true});
+    const w=await fh.createWritable();await w.write(txt);await w.close();};
+  await poner('respaldo-finca-hilapo.json');                 // siempre el más reciente
+  await poner(`respaldo-finca-hilapo-${hoyISO()}.json`);     // una copia por día
+  localStorage.setItem(K_ULT,hoyISO());
+  return true;
+}
+/* ---- PUNTO DE RESTAURACIÓN: copia aparte antes de algo peligroso ----
+   Si alguien borra por error, esta copia queda con nombre y hora en la
+   carpeta de respaldo (y por lo tanto en la nube). */
+async function puntoDeRestauracion(motivo){
+  const ahora=new Date();
+  const sello=`${hoyISO()}_${String(ahora.getHours()).padStart(2,'0')}${String(ahora.getMinutes()).padStart(2,'0')}`;
+  const nombre=`ANTES-DE-${motivo}-${sello}.json`;
+  const txt=JSON.stringify(paquete(),null,2);
+  if(CARPETA&&await permisoCarpeta(true)){
+    try{
+      const fh=await CARPETA.getFileHandle(nombre,{create:true});
+      const w=await fh.createWritable();await w.write(txt);await w.close();
+      return {ok:true,donde:localStorage.getItem(K_DIRNOM)||'la carpeta',nombre};
+    }catch(e){console.error(e);}
+  }
+  /* sin carpeta conectada, se baja a Descargas para no quedar sin red de seguridad */
+  try{
+    const b=new Blob([txt],{type:'application/json'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=nombre;
+    document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(a.href);
+    return {ok:true,donde:'la carpeta de Descargas',nombre};
+  }catch(e){return {ok:false,nombre};}
+}
+/* pide escribir BORRAR para que no pase por un clic distraído */
+function confirmarPeligro(texto){
+  const v=prompt(texto+'\n\nPara confirmar, escribí:  BORRAR');
+  if(v===null)return false;
+  if(v.trim().toUpperCase()!=='BORRAR'){alert('No se escribió BORRAR. No se borró nada.');return false;}
+  return true;
+}
+
+let tResp;
+function programarRespaldo(){
+  if(!CARPETA)return;
+  clearTimeout(tResp);
+  tResp=setTimeout(()=>{escribirRespaldo()
+    .then(ok=>{if(ok)aviso('Guardado y respaldado ✓');pintarEstadoRespaldo();})
+    .catch(e=>{console.error(e);pintarEstadoRespaldo();});},1200);
+}
+async function conectarCarpeta(){
+  if(!FSA)return alert('Este navegador no permite escribir en una carpeta.\n\nAbrí el archivo con Chrome o Edge, '+
+    'o usá el botón "Respaldo cifrado" para bajar copias a mano.');
+  try{
+    const h=await window.showDirectoryPicker({mode:'readwrite',id:'fincaHilapo'});
+    CARPETA=h;
+    localStorage.setItem(K_DIRNOM,h.name);
+    /* si el navegador no deja recordarla, igual queda conectada por esta sesión */
+    CARPETA_PERSISTE=await idbSet('carpeta',h);
+    const ok=await escribirRespaldo();
+    await pintarEstadoRespaldo();
+    alert(ok
+      ?`Listo. Cada vez que se anote algo, la copia cifrada se guarda sola en "${h.name}".`+
+       (CARPETA_PERSISTE?'':'\n\nOJO: como la app se abre desde un archivo, el navegador no puede recordar la carpeta. '+
+        'Cada vez que abrás la app vas a tener que darle una sola vez a "Conectar carpeta de respaldo".')
+      :'La carpeta quedó elegida, pero no se pudo escribir en ella. Probá con otra carpeta.');
+  }catch(e){
+    if(e.name==='AbortError')return;               // canceló, no pasa nada
+    console.error(e);
+    alert('No se pudo conectar la carpeta.\n\nDetalle: '+(e.message||e.name||e));
+  }
+}
+async function reactivarCarpeta(){
+  if(!CARPETA)return conectarCarpeta();
+  if(await permisoCarpeta(true)){await escribirRespaldo();pintarEstadoRespaldo();aviso('Respaldo reactivado ✓');}
+  else alert('No se dio el permiso. Sin él la app no puede escribir el respaldo.');
+}
+async function respaldarAhora(){
+  if(CARPETA){
+    if(!(await permisoCarpeta(true)))return alert('Hace falta el permiso de la carpeta.');
+    await escribirRespaldo();pintarEstadoRespaldo();
+    return alert('Respaldo guardado en la carpeta.');
+  }
+  exportarCifrado();
+}
+function diasDesde(iso){
+  if(!iso)return null;
+  const p=iso.split('-').map(Number);
+  return Math.floor((new Date()-new Date(p[0],p[1]-1,p[2]))/86400000);
+}
+async function pintarEstadoRespaldo(){
+  const cont=document.getElementById('estadoRespaldo'), ban=document.getElementById('bannerRespaldo');
+  if(!cont)return;
+  const ult=localStorage.getItem(K_ULT), d=diasDesde(ult), nom=localStorage.getItem(K_DIRNOM)||'';
+  const perm=CARPETA?await permisoCarpeta(false):false;
+  document.getElementById('btnReactivar').style.display=(CARPETA&&!perm)?'':'none';
+  document.getElementById('btnCarpeta').textContent=CARPETA?'Cambiar carpeta':'Conectar carpeta de respaldo';
+
+  if(CARPETA&&perm){
+    cont.innerHTML=`<div class="aviso verde"><strong>Respaldo automático activo</strong> en la carpeta
+      “${esc(nom)}”. Última copia: ${ult?fecha(ult):'—'}. Se guarda sola cada vez que se anota algo.
+      ${CARPETA_PERSISTE?'':'<br><strong>Ojo:</strong> como la app se abre desde un archivo, el navegador no '+
+        'puede recordar la carpeta. Cada vez que abrás la app, dale una sola vez a “Conectar carpeta de respaldo”. '+
+        'Mientras no lo hagas, la app funciona pero no respalda.'}</div>`;
+    ban.innerHTML=CARPETA_PERSISTE?'':`<div class="aviso"><strong>Recordá reconectar la carpeta de respaldo</strong>
+      cada vez que abrís la app — es un clic, en Configuración.</div>`;
+  }else if(CARPETA&&!perm){
+    cont.innerHTML=`<div class="aviso"><strong>El respaldo está en pausa.</strong> El navegador pide
+      confirmar el permiso de la carpeta “${esc(nom)}” cada vez que se abre la app.
+      Última copia: ${ult?fecha(ult):'—'}.</div>`;
+    ban.innerHTML=`<div class="aviso"><strong>El respaldo automático está en pausa.</strong>
+      Dale un clic para reactivarlo y que la información no se pierda.
+      <button class="b" style="margin-left:8px;padding:5px 12px" onclick="reactivarCarpeta()">Reactivar</button></div>`;
+  }else if(nom){
+    /* ya se había conectado antes, pero el navegador no la recuerda entre sesiones */
+    cont.innerHTML=`<div class="aviso rojo"><strong>La carpeta “${esc(nom)}” está desconectada.</strong>
+      Ahora mismo <u>nada de lo que anotés se está respaldando</u>. El navegador no puede recordar la
+      carpeta porque la app se abre como archivo. Reconectala con un clic — es la misma carpeta de siempre.
+      Última copia: ${ult?fecha(ult):'—'}.</div>`;
+    ban.innerHTML=`<div class="aviso rojo"><strong>El respaldo está apagado.</strong>
+      Reconectá la carpeta “${esc(nom)}” para no perder lo que anotés hoy.
+      <button class="b" style="margin-left:8px;padding:5px 12px" onclick="conectarCarpeta()">Reconectar ahora</button></div>`;
+  }else{
+    cont.innerHTML=`<div class="aviso rojo"><strong>No hay respaldo automático.</strong> La información está
+      solo en este navegador: si se borra el historial o se daña la computadora, se pierde.
+      ${FSA?'Conectá una carpeta con el botón de abajo.':'Este navegador no permite carpeta automática — usá Chrome o Edge, o bajá copias a mano seguido.'}</div>`;
+    ban.innerHTML=`<div class="aviso rojo"><strong>Cuidado: la información no está respaldada.</strong>
+      ${d===null?'Todavía no se ha hecho ninguna copia.':'La última copia fue hace '+d+' día(s).'}
+      <button class="b" style="margin-left:8px;padding:5px 12px" onclick="conectarCarpeta()">Conectar carpeta</button></div>`;
+  }
+}
+async function cargarCarpeta(){
+  if(!FSA)return;
+  try{const h=await idbGet('carpeta');if(h)CARPETA=h;}catch(e){}
 }
 let tAviso;
 function aviso(t){const e=document.getElementById('estadoGuardado');if(!e)return;e.textContent=t;
-  clearTimeout(tAviso);tAviso=setTimeout(()=>{e.textContent='Conectado a la base de datos';},2200);}
-const uid=()=>crypto.randomUUID();
+  clearTimeout(tAviso);tAviso=setTimeout(()=>{e.textContent='Datos cifrados en este navegador';},2200);}
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 
 /* ============================ UTILES ============================ */
 const nf=n=>(isFinite(n)?n:0).toLocaleString('es-NI',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -1348,192 +1353,182 @@ const activos=()=>D.ani.filter(a=>a.estado==='Activa');
 
 /* ======================= ACCESO / SESIÓN ======================= */
 function mostrarPantalla(id){
-  ['pantallaEntrar','pantallaNoSoporte'].forEach(p=>{
-    const el=document.getElementById(p); if(el) el.style.display=(p===id)?'block':'none';});
+  ['pantallaCrear','pantallaEntrar','pantallaNoSoporte'].forEach(p=>{
+    document.getElementById(p).style.display = (p===id)?'block':'none';});
 }
 function errar(id,msg){const e=document.getElementById(id);e.textContent=msg;e.classList.add('on');}
 function limpiarErr(id){document.getElementById(id).classList.remove('on');}
 
-/* ======================= ENTRAR =======================
-   Ya no hay contraseñas guardadas en este navegador. El correo y la
-   contraseña los verifica Supabase, y el ROL viene de la base de datos,
-   no de esta página. Si alguien modificara este archivo para decir que
-   es dueño, la base de datos lo seguiría tratando como lo que es.      */
+async function crearPrimero(){
+  limpiarErr('errCrear');
+  const u=document.getElementById('nuU').value.trim();
+  const p=document.getElementById('nuP').value, p2=document.getElementById('nuP2').value;
+  if(u.length<2)return errar('errCrear','El usuario necesita al menos 2 letras.');
+  if(p.length<6)return errar('errCrear','La contraseña necesita al menos 6 caracteres.');
+  if(p!==p2)return errar('errCrear','Las dos contraseñas no son iguales.');
+  try{
+    const maestraBytes=azar(32);
+    const reg=await envolver(maestraBytes,p);
+    /* el primero es el DUEÑO: nadie más puede borrar la información */
+    escribirUsuarios({v:1,usuarios:[{u:u,rol:'dueño',creado:hoyISO(),...reg}]});
+    MAESTRA=await importarMaestra(maestraBytes);
+    USR={u:u,rol:'dueño'};
+    D=JSON.parse(JSON.stringify(DEF));
+    await guardar();
+    abrirApp();
+  }catch(e){console.error(e);errar('errCrear','No se pudo crear el usuario en este navegador.');}
+}
+
+/* Instalar desde un respaldo SIN estar adentro. Es lo que permite pasarle
+   la app a otra persona conservando los usuarios y sus roles: el que la
+   recibe no crea un usuario nuevo (que lo dejaría de dueño), sino que
+   instala el respaldo y entra con la contraseña que le dieron. */
+document.getElementById('instFile').addEventListener('change',e=>{
+  const f=e.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const d=JSON.parse(r.result);
+      if(d.tipo!=='finca-hilapo-cifrado'||!d.usuarios||!d.datos)
+        throw new Error('Ese archivo no es un respaldo cifrado de esta app.\n\n'+
+          'Tiene que ser el que se baja con el botón "Respaldo cifrado".');
+      const us=(d.usuarios.usuarios||[]).map(x=>x.u).join(', ');
+      const hay=leerUsuarios();
+      if(hay&&hay.usuarios&&hay.usuarios.length&&
+         !confirm('En esta computadora ya hay usuarios y datos guardados.\n\n'+
+           'Instalar este respaldo los reemplaza por completo. ¿Seguir?'))return;
+      if(!confirm(`Se va a instalar el respaldo.\n\nUsuarios que trae: ${us}\n\n`+
+        'Después vas a entrar con tu usuario y la contraseña que te dieron. ¿Seguir?'))return;
+      escribirUsuarios(d.usuarios);
+      localStorage.setItem(K_DATA,JSON.stringify(d.datos));
+      alert('Listo. Ahora entrá con tu usuario y contraseña.');
+      location.reload();
+    }catch(err){alert(err.message||'Ese archivo no sirve como respaldo.');}
+  };
+  r.readAsText(f);e.target.value='';
+});
+
 async function entrar(){
   limpiarErr('errEntrar');
-  const correo = document.getElementById('loU').value.trim();
-  const pass   = document.getElementById('loP').value;
-  if(!correo || !pass) return errar('errEntrar','Escribí tu correo y tu contraseña.');
-
-  const btn = document.getElementById('btnEntrar');
-  if(btn){ btn.disabled = true; btn.textContent = 'Entrando…'; }
+  const u=document.getElementById('loU').value.trim();
+  const p=document.getElementById('loP').value;
+  const reg=(leerUsuarios()||{usuarios:[]}).usuarios.find(x=>x.u.toLowerCase()===u.toLowerCase());
+  if(!reg)return errar('errEntrar','Usuario o contraseña incorrectos.');
+  let bytes;
+  try{bytes=await desenvolver(reg,p);}
+  catch(e){return errar('errEntrar','Usuario o contraseña incorrectos.');}
+  MAESTRA=await importarMaestra(bytes);
+  USR={u:reg.u,rol:reg.rol||'usuario'};
   try{
-    const { data, error } = await SB.auth.signInWithPassword({ email:correo, password:pass });
-    if(error) throw new Error('Correo o contraseña incorrectos.');
-    await sesionAdentro(data.user);
-    document.getElementById('loP').value='';
+    const crudo=localStorage.getItem(K_DATA);
+    D = crudo ? normalizar(JSON.parse(await descifrar(MAESTRA,JSON.parse(crudo))))
+              : JSON.parse(JSON.stringify(DEF));
   }catch(e){
     console.error(e);
-    errar('errEntrar', e.message || 'No se pudo entrar.');
-    try{ await SB.auth.signOut(); }catch(_){}
-  }finally{
-    if(btn){ btn.disabled = false; btn.textContent = 'Entrar'; }
+    MAESTRA=null;USR=null;
+    return errar('errEntrar','Los datos guardados no se pudieron abrir. Restaurá un respaldo.');
   }
-}
-
-/* con la sesión ya abierta: buscar quién es y traer la finca */
-async function sesionAdentro(user){
-  const { data:perfil, error } = await SB.from('perfiles')
-    .select('usuario,nombre,rol').eq('id', user.id).maybeSingle();
-  if(error) throw new Error('No se pudo leer tu perfil: '+error.message);
-  if(!perfil) throw new Error(
-    'Tu cuenta existe pero todavía no tiene permiso sobre la finca.\n'+
-    'Pedile a Fausto que te dé acceso.');
-  USR = { u:perfil.usuario, nombre:perfil.nombre||perfil.usuario,
-          rol:ROL_APP(perfil.rol), correo:user.email, id:user.id };
-  await cargarTodo();
-  await abrirApp();
-}
-
-/* ¿ya había sesión abierta de antes? entonces no pedir contraseña */
-async function arranque(){
-  try{
-    const { data } = await SB.auth.getSession();
-    if(data && data.session && data.session.user){
-      await sesionAdentro(data.session.user);
-      return;
-    }
-  }catch(e){ console.error(e); }
-  mostrarPantalla('pantallaEntrar');
-  const c=document.getElementById('loU'); if(c) c.focus();
-}
-
-/* recuperar la contraseña por correo. Esto antes no existía:
-   si se olvidaba la contraseña, se perdía todo. */
-async function olvideClave(){
-  const correo = document.getElementById('loU').value.trim();
-  if(!correo) return errar('errEntrar','Escribí tu correo arriba y volvé a darle.');
-  const { error } = await SB.auth.resetPasswordForEmail(correo, { redirectTo: location.href });
-  if(error) return errar('errEntrar','No se pudo mandar el correo: '+error.message);
-  alert('Listo. Te mandamos un correo a '+correo+' con el enlace para poner una contraseña nueva.\n\n'+
-        'Revisá también la carpeta de spam.');
+  document.getElementById('loP').value='';
+  abrirApp();
 }
 
 async function abrirApp(){
   document.body.classList.remove('bloqueado');
   document.getElementById('acceso').style.display='none';
-  const nom={'dueño':'dueño','admin':'admin'}[USR.rol];
-  document.getElementById('sesionU').textContent = USR.u + (nom? ' · '+nom : '');
-  document.getElementById('zonaAdmin').style.display = esDueno()?'block':'none';
+  document.getElementById('sesionU').textContent=USR.u+(USR.rol==='admin'?' · admin':'');
+  /* solo el dueño maneja usuarios */
+  document.getElementById('zonaAdmin').style.display=esDueno()?'block':'none';
   document.getElementById('mFecha').value=hoyISO();
   llenarCatForm();pintarConfig();mostrarCamposPeriodo();pintar();ajustarFormAnimal();
-  pintarEstadoNube();
+  await cargarCarpeta();
+  await pintarEstadoRespaldo();
+  if(CARPETA&&await permisoCarpeta(false)){await escribirRespaldo();await pintarEstadoRespaldo();}
   reiniciarInactividad();
 }
-
-async function salir(){
-  try{ await SB.auth.signOut(); }catch(e){}
-  USR=null; FOTO=null; D=JSON.parse(JSON.stringify(DEF));
+function salir(){
+  MAESTRA=null;USR=null;D=JSON.parse(JSON.stringify(DEF));
+  clearTimeout(tResp);
+  const b=document.getElementById('bannerRespaldo');if(b)b.innerHTML='';
   document.body.classList.add('bloqueado');
-  document.getElementById('acceso').style.display='flex';
+  const a=document.getElementById('acceso');a.style.display='flex';
   document.getElementById('loP').value='';limpiarErr('errEntrar');
   mostrarPantalla('pantallaEntrar');
   document.getElementById('loU').focus();
 }
-
-/* aviso permanente de dónde vive la información */
-function pintarEstadoNube(){
-  const b=document.getElementById('bannerRespaldo'); if(!b)return;
-  b.innerHTML=`<div class="aviso verde" style="margin:0 0 12px">
-    <strong>Todo se guarda solo en la nube.</strong> No hay que respaldar nada a mano
-    y no se pierde aunque se dañe esta computadora.
-    <button class="b gris" style="margin-left:10px;padding:5px 12px"
-      onclick="refrescar()">Traer lo último</button></div>`;
-}
-
 /* bloqueo automático por inactividad (30 min) */
 let tInact;
 function reiniciarInactividad(){
   clearTimeout(tInact);
-  if(!USR)return;
-  tInact=setTimeout(()=>{if(USR){salir();alert('Se cerró la sesión por inactividad. Volvé a entrar.');}},30*60*1000);
+  if(!MAESTRA)return;
+  tInact=setTimeout(()=>{if(MAESTRA){salir();alert('Se cerró la sesión por inactividad. Volvé a entrar.');}},30*60*1000);
 }
 ['click','keydown','touchstart'].forEach(ev=>document.addEventListener(ev,reiniciarInactividad,{passive:true}));
 
-/* ======================= GESTIÓN DE USUARIOS =======================
-   Los usuarios y sus roles viven en la base de datos. Solo el dueño los
-   puede cambiar, y esa regla la hace cumplir Postgres, no esta página. */
-let LISTA_USUARIOS = [];
-
-async function tablaUsuarios(){
-  const cont = document.getElementById('tblUsuarios'); if(!cont) return;
-  const { data, error } = await SB.from('perfiles')
-    .select('id,usuario,nombre,rol,creado').order('creado');
-  if(error){ cont.innerHTML=`<p class="vacio">No se pudo leer la lista: ${esc(error.message)}</p>`; return; }
-  LISTA_USUARIOS = data || [];
-  cont.innerHTML =
-    `<table><thead><tr><th>Usuario</th><th>Rol</th><th>Desde</th><th></th></tr></thead><tbody>`+
-    LISTA_USUARIOS.map(x=>{
-      const rol = ROL_APP(x.rol);
-      const nom = {'dueño':'Dueño','admin':'Administrador'}[rol]||'Usuario';
-      const puede = {'dueño':'Todo, incluido borrar información',
-                     'admin':'Todo menos borrar toda la información y manejar usuarios',
-                     'usuario':'Anotar, corregir y consultar'}[rol]||'Anotar y consultar';
-      const yo = x.usuario===USR.u;
+/* ======================= GESTIÓN DE USUARIOS ======================= */
+function tablaUsuarios(){
+  const us=(leerUsuarios()||{usuarios:[]}).usuarios;
+  document.getElementById('tblUsuarios').innerHTML=
+    `<table><thead><tr><th>Usuario</th><th>Rol</th><th>Creado</th><th></th></tr></thead><tbody>`+
+    us.map(x=>{
+      const nom={'dueño':'Dueño','admin':'Administrador'}[x.rol]||'Usuario';
+      const puede={'dueño':'Todo, incluido borrar información',
+                   'admin':'Todo menos borrar información y manejar usuarios',
+                   'usuario':'Anotar, corregir y consultar'}[x.rol]||'Anotar y consultar';
       return `<tr>
-      <td><strong>${esc(x.usuario)}</strong>${yo?' <span class="pill et">vos</span>':''}
-        <br><span style="font-size:11.5px;color:#6b7268">${esc(x.nombre||'')}</span></td>
-      <td><span class="pill ${rol==='usuario'?'et':'rol'}">${nom}</span>
+      <td><strong>${esc(x.u)}</strong>${x.u===USR.u?' <span class="pill et">vos</span>':''}</td>
+      <td><span class="pill ${x.rol==='usuario'?'et':'rol'}">${nom}</span>
         <br><span style="font-size:11.5px;color:#6b7268">${puede}</span></td>
-      <td>${fecha((x.creado||'').slice(0,10))||'—'}</td>
-      <td>${(esDueno()&&!yo&&rol!=='dueño')
-        ?`<button class="mini x" onclick="quitarUsuario('${esc(x.id)}','${esc(x.usuario)}')">Quitar</button>`
-        :(rol==='dueño'?'<span style="font-size:12px;color:#6b7268">no se puede quitar</span>':'')}</td>
+      <td>${fecha(x.creado)||'—'}</td>
+      <td>${(esDueno()&&x.u!==USR.u&&x.rol!=='dueño')
+        ?`<button class="mini x" onclick="quitarUsuario('${esc(x.u)}')">Quitar</button>`
+        :(x.rol==='dueño'?'<span style="font-size:12px;color:#6b7268">no se puede quitar</span>':'')}</td>
     </tr>`;}).join('')+`</tbody></table>
     <p class="ayuda" style="margin-top:8px">El <strong>dueño</strong> es el único que puede borrar
-      toda la información o manejar usuarios. Esa regla vive dentro de la base de datos: aunque
-      alguien modificara esta página, no la podría saltar.</p>`;
+      información de la finca o restaurar un respaldo. Ese rol no se puede quitar ni traspasar desde acá,
+      justamente para que nadie más pueda hacerlo.</p>`;
 }
-
-/* Dar acceso: la cuenta se crea en el panel de Supabase (ahí se pone la
-   contraseña, que nadie más ve). Acá solo se le da permiso sobre la finca. */
 document.getElementById('fUsuario').addEventListener('submit',async e=>{
   e.preventDefault();
-  if(!esDueno())return alert('Solo el dueño puede dar acceso.');
-  const correo=document.getElementById('uNuevo').value.trim().toLowerCase();
+  if(!esDueno())return alert('Solo el dueño puede agregar usuarios.');
+  const u=document.getElementById('uNuevo').value.trim(), p=document.getElementById('uPass').value;
   const rol=document.getElementById('uRol').value;
-  if(!correo.includes('@'))return alert('Escribí el correo completo de la persona.');
-  const { data, error } = await SB.rpc('dar_acceso',
-    { p_correo:correo, p_usuario:correo.split('@')[0], p_rol:ROL_DB(rol) });
-  if(error) return alert('No se pudo dar el acceso:\n\n'+error.message+
-    '\n\nRevisá que la cuenta ya exista en Supabase → Authentication → Users.');
-  document.getElementById('uNuevo').value='';
-  const p=document.getElementById('uPass'); if(p) p.value='';
-  await tablaUsuarios();
-  apuntarBitacora('Dio acceso a un usuario',correo);
-  alert(data||('Listo. '+correo+' ya puede entrar con su correo y su contraseña.'));
+  if(u.length<2)return alert('El usuario necesita al menos 2 letras.');
+  if(p.length<6)return alert('La contraseña necesita al menos 6 caracteres.');
+  const arch=leerUsuarios();
+  if(arch.usuarios.some(x=>x.u.toLowerCase()===u.toLowerCase()))return alert('Ya existe un usuario con ese nombre.');
+  const bytes=await cripto.subtle.exportKey('raw',MAESTRA);
+  const reg=await envolver(new Uint8Array(bytes),p);
+  arch.usuarios.push({u:u,rol:rol,creado:hoyISO(),...reg});
+  escribirUsuarios(arch);
+  document.getElementById('uNuevo').value='';document.getElementById('uPass').value='';
+  tablaUsuarios();llenarSelects();
+  alert(`Usuario "${u}" creado. Ya puede entrar con su propia contraseña y ve los mismos datos.`);
 });
-
-async function quitarUsuario(id,nombre){
-  if(!esDueno())return alert('Solo el dueño puede quitar accesos.');
-  if(!confirm(`¿Quitar el acceso de "${nombre}"?\n\nNo se borra ningún dato de la finca, `+
-              'solo deja de poder entrar.'))return;
-  const { error } = await SB.from('perfiles').delete().eq('id',id);
-  if(error) return alert('No se pudo quitar: '+error.message);
-  apuntarBitacora('Quitó el acceso de un usuario',nombre);
-  await guardar(); await tablaUsuarios(); tablaBitacora();
+function quitarUsuario(u){
+  const arch=leerUsuarios();
+  if(u===USR.u)return alert('No podés quitarte a vos mismo.');
+  if(arch.usuarios.filter(x=>x.rol==='admin').length<=1 &&
+     arch.usuarios.find(x=>x.u===u).rol==='admin')return alert('Tiene que quedar al menos un administrador.');
+  if(!confirm(`¿Quitar el acceso de "${u}"?\n\nNo se borra ningún dato de la finca, solo pierde el acceso.`))return;
+  arch.usuarios=arch.usuarios.filter(x=>x.u!==u);
+  escribirUsuarios(arch);
+  apuntarBitacora('Quitó el acceso de un usuario',u);
+  guardar();tablaUsuarios();llenarSelects();tablaBitacora();
 }
-
-/* Cambiar mi contraseña — ahora la maneja Supabase */
 document.getElementById('fPass').addEventListener('submit',async e=>{
   e.preventDefault();
-  const nue=document.getElementById('pNue').value, nue2=document.getElementById('pNue2').value;
-  if(nue.length<8)return alert('La contraseña nueva necesita al menos 8 caracteres.');
+  const act=document.getElementById('pAct').value, nue=document.getElementById('pNue').value,
+        nue2=document.getElementById('pNue2').value;
+  if(nue.length<6)return alert('La contraseña nueva necesita al menos 6 caracteres.');
   if(nue!==nue2)return alert('Las dos contraseñas nuevas no son iguales.');
-  const { error } = await SB.auth.updateUser({ password:nue });
-  if(error) return alert('No se pudo cambiar: '+error.message);
-  ['pAct','pNue','pNue2'].forEach(i=>{const el=document.getElementById(i); if(el) el.value='';});
-  alert('Contraseña cambiada. Los datos de la finca siguen exactamente igual.');
+  const arch=leerUsuarios(), reg=arch.usuarios.find(x=>x.u===USR.u);
+  let bytes;
+  try{bytes=await desenvolver(reg,act);}catch(err){return alert('La contraseña actual no es correcta.');}
+  const nuevoReg=await envolver(bytes,nue);
+  Object.assign(reg,nuevoReg);
+  escribirUsuarios(arch);
+  ['pAct','pNue','pNue2'].forEach(i=>document.getElementById(i).value='');
+  alert('Contraseña cambiada. Los datos siguen igual.');
 });
 
 /* ============================ KPIs ============================ */
@@ -3472,11 +3467,12 @@ function bajar(obj,nombre){
   document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(a.href);
 }
 function exportarCifrado(){
-  bajar({tipo:'finca-hilapo-copia',v:2,exportado:new Date().toISOString(),
-         por:USR.u,datos:D}, `copia-finca-hilapo-${hoyISO()}.json`);
-  apuntarBitacora('Bajó una copia de la finca','Copia manual del estado actual');
+  bajar({tipo:'finca-hilapo-cifrado',v:1,usuarios:leerUsuarios(),
+    datos:JSON.parse(localStorage.getItem(K_DATA)||'null')},
+    `respaldo-cifrado-finca-hilapo-${hoyISO()}.json`);
+  apuntarBitacora('Bajó un respaldo cifrado','Va protegido: no se abre sin contraseña');
   guardar();
-  aviso('Copia bajada \u2713');
+  aviso('Respaldo cifrado bajado ✓');
 }
 /* El respaldo legible va SIN cifrar: quien lo abra ve todo.
    Por eso solo el dueño puede bajarlo. */
@@ -3503,9 +3499,16 @@ document.getElementById('impFile').addEventListener('change',e=>{
     try{
       const d=JSON.parse(r.result);
       await puntoDeRestauracion('RESTAURAR');
-      const dat=(d.tipo==='finca-hilapo-plano'||d.tipo==='finca-hilapo-copia')?d.datos:d;
+      if(d.tipo==='finca-hilapo-cifrado'&&d.usuarios&&d.datos){
+        if(!confirm('Esto reemplaza TODOS los datos Y TODOS los usuarios por los del respaldo.\n\nDespués vas a tener que entrar con la contraseña que tenían en ese respaldo.\n\n¿Seguir?'))return;
+        escribirUsuarios(d.usuarios);
+        localStorage.setItem(K_DATA,JSON.stringify(d.datos));
+        alert('Respaldo restaurado. Volvé a entrar con la contraseña de ese respaldo.');
+        location.reload();return;
+      }
+      const dat=(d.tipo==='finca-hilapo-plano')?d.datos:d;
       if(!dat||!Array.isArray(dat.mov)||!Array.isArray(dat.ani))throw 0;
-      if(!confirm('Esto reemplaza los datos de la finca EN LA NUBE (movimientos, animales, lotes) por los del respaldo.\n\nLos usuarios y contraseñas se quedan como están. ¿Seguir?'))return;
+      if(!confirm('Esto reemplaza los datos de la finca (movimientos, animales y lotes) por los del respaldo.\n\nLos usuarios y contraseñas se quedan como están. ¿Seguir?'))return;
       const bit=D.bitacora||[];
       D=normalizar(dat);D.bitacora=bit;
       apuntarBitacora('Restauró un respaldo',f.name);
@@ -3595,10 +3598,10 @@ async function borrarTodo(){
   const pr=await puntoDeRestauracion('BORRAR-TODO');
   if(!pr.ok&&!confirm('No se pudo guardar la copia de seguridad.\n\n'+
     'Si seguís, la información se pierde sin red de rescate. ¿Seguir igual?'))return;
-  const { error } = await SB.rpc('borrar_todo',{confirmacion:'BORRAR TODO'});
-  if(error) return alert('La base de datos NO permitió borrar:\n\n'+error.message);
-  await cargarTodo();
-  PLANILLA_SEL=null;  apuntarBitacora('BORRÓ TODO','Se borró toda la información de la finca');
+  const bit=D.bitacora||[];
+  D=JSON.parse(JSON.stringify(DEF));D.bitacora=bit;
+  PLANILLA_SEL=null;FICHA_ID=null;ABIERTOS.clear();VENTAS_ABIERTAS.clear();
+  apuntarBitacora('BORRÓ TODO','Se borró toda la información de la finca');
   guardar();pintarConfig();pintar();
   alert('La app quedó en cero.\n\n'+
     (pr.ok?`La copia de seguridad quedó en ${pr.donde}:\n${pr.nombre}\n\nCon ese archivo se puede volver atrás.`
@@ -3665,7 +3668,7 @@ function llenarSelects(){
   const me=document.getElementById('movEt');
   if(me.options.length<2)me.innerHTML='<option value="">Cualquier etapa</option>'+ETAPAS.map(c=>`<option>${c}</option>`).join('');
 
-  const usuarios=(LISTA_USUARIOS||[]).map(x=>x.usuario);
+  const usuarios=(leerUsuarios()||{usuarios:[]}).usuarios.map(x=>x.u);
   const fu=document.getElementById('fUsr'),pu=fu.value;
   fu.innerHTML='<option value="">Todos</option>'+usuarios.map(u=>`<option>${esc(u)}</option>`).join('');
   fu.value=usuarios.includes(pu)?pu:'';
@@ -3709,13 +3712,17 @@ document.getElementById('eFiltro').addEventListener('change',tablaEmp);
 document.getElementById('rTipo').addEventListener('change',()=>{mostrarCamposPeriodo();reporte();});
 ['rAnio','rMes','rTrim','rSem','rDiaSemana','rDesde','rHasta'].forEach(i=>
   document.getElementById(i).addEventListener('change',reporte));
-['loU','loP'].forEach(id=>{const el=document.getElementById(id);
-  if(el)el.addEventListener('keydown',e=>{if(e.key==='Enter')entrar();});});
+['nuP2','loP'].forEach(id=>document.getElementById(id).addEventListener('keydown',e=>{
+  if(e.key==='Enter')id==='loP'?entrar():crearPrimero();}));
 
 /* ============================ ARRANQUE ============================ */
-(async function inicio(){
-  document.getElementById('acceso').style.display='flex';
-  await arranque();
+(function inicio(){
+  const a=document.getElementById('acceso');
+  if(!cripto){a.style.display='flex';mostrarPantalla('pantallaNoSoporte');return;}
+  a.style.display='flex';
+  const u=leerUsuarios();
+  if(!u||!u.usuarios||!u.usuarios.length){mostrarPantalla('pantallaCrear');document.getElementById('nuU').focus();}
+  else{mostrarPantalla('pantallaEntrar');document.getElementById('loU').focus();}
 })();
 </script>
 </body>
