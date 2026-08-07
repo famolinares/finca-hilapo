@@ -338,7 +338,9 @@ footer a{color:var(--verde)}
             </datalist></div>
           <div class="campo"><label>Fecha de nacimiento</label><input type="date" id="aFnac"></div>
           <div class="campo"><label>Lote de manejo</label><select id="aLote"></select></div>
-          <div class="campo"><label>Madre (arete)</label><input type="text" id="aMadre" placeholder="A-001"></div>
+          <div class="campo"><label>Madre (arete)</label>
+            <input type="text" id="aMadre" list="listaMadres" placeholder="elegí de la lista"></div>
+          <datalist id="listaMadres"></datalist>
           <div class="campo"><label>N° de partos</label><input type="number" id="aPartos" min="0" step="1" value="0"></div>
           <div class="campo" id="cManejo"><label>¿Qué se hace con ella?</label><select id="aManejo"></select></div>
           <div class="campo" id="cLitros"><label>Litros por día (al balde)</label>
@@ -1768,7 +1770,8 @@ function editarAnimal(id){
       <div class="campo"><label>Raza</label>
         <input type="text" id="edRaza" list="listaRazas" value="${esc(a.raza)}"></div>
       <div class="campo"><label>Fecha de nacimiento</label><input type="date" id="edFnac" value="${esc(a.fnac)}"></div>
-      <div class="campo"><label>Madre (arete)</label><input type="text" id="edMadre" value="${esc(a.madre)}"></div>
+      <div class="campo"><label>Madre (arete)</label>
+        <input type="text" id="edMadre" list="listaMadres" value="${esc(a.madre)}" placeholder="elegí de la lista"></div>
       <div class="campo"><label>Lote</label><select id="edLote">
         <option value="">Sin lote</option>
         ${D.lotes.map(l=>opt(l.id,l.nombre,a.lote)).join('')}</select></div>
@@ -1955,6 +1958,78 @@ function abrirFicha(id){
   document.getElementById('modalFicha').style.display='flex';
 }
 function cerrarFicha(){document.getElementById('modalFicha').style.display='none';FICHA_ID=null;}
+/* ================= GENEALOGÍA — línea materna =================
+   Los toros andan sueltos con el hato, así que el padre no se puede
+   saber sin inventarlo. Solo se sigue la madre, que sí es un hecho. */
+const hijasDe=arete=>!arete?[]:D.ani.filter(x=>
+  x.madre && x.madre.trim().toLowerCase()===arete.trim().toLowerCase());
+
+/* devuelve [[hijas],[nietas],[bisnietas],...] hasta donde llegue */
+function descendencia(a,tope){
+  const niveles=[]; let actual=[a]; const vistos=new Set([a.id]);
+  for(let i=0;i<(tope||5);i++){
+    const sig=[];
+    actual.forEach(m=>hijasDe(m.arete).forEach(h=>{
+      if(!vistos.has(h.id)){vistos.add(h.id);sig.push({...h,_madre:m.arete});}}));
+    if(!sig.length)break;
+    niveles.push(sig); actual=sig;
+  }
+  return niveles;
+}
+
+/* sube por las madres: madre, abuela, bisabuela... */
+function ancestros(a,tope){
+  const linea=[]; const vistos=new Set([a.id]); let act=a;
+  for(let i=0;i<(tope||5);i++){
+    if(!act.madre)break;
+    const m=D.ani.find(x=>x.arete.trim().toLowerCase()===act.madre.trim().toLowerCase());
+    if(!m||vistos.has(m.id))break;
+    vistos.add(m.id); linea.push(m); act=m;
+  }
+  return linea;
+}
+
+const NIVELES=['Hijas e hijos','Nietas y nietos','Bisnietas y bisnietos',
+               'Tataranietas','5ª generación'];
+
+function pintarDescendencia(a){
+  const niv=descendencia(a);
+  const arr=ancestros(a);
+  const total=niv.reduce((s,n)=>s+n.length,0);
+
+  let arriba='';
+  if(arr.length){
+    arriba=`<p class="ayuda" style="margin:0 0 10px">Viene de:
+      ${arr.map((m,i)=>`<button class="mini" onclick="abrirFicha('${m.id}')"
+        title="${['Madre','Abuela','Bisabuela','Tatarabuela','5ª'][i]||''}">${esc(m.arete)}${m.nombre?' · '+esc(m.nombre):''}</button>`)
+        .join(' <span style="color:#b9beb4">←</span> ')}</p>`;
+  }
+  if(!total) return arriba+`<p class="vacio">Todavía no tiene descendencia registrada en el hato.</p>`;
+
+  const vivos=n=>n.filter(x=>x.estado==='Activa').length;
+  const resumen=niv.map((n,i)=>
+    `<span class="pill ${i===0?'rol':'et'}">${NIVELES[i]||('Nivel '+(i+1))}: <strong>${n.length}</strong></span>`).join(' ');
+
+  const tabla=niv.map((n,i)=>`
+    <h4 style="margin:14px 0 6px;font-size:14px;color:var(--verde-osc)">
+      ${NIVELES[i]||('Nivel '+(i+1))} — ${n.length} (${vivos(n)} en el hato)</h4>
+    <div class="tabla-cont"><table><thead><tr>
+      <th>Arete</th><th>Nombre</th><th>Sexo</th><th>Nace de</th><th>Etapa</th><th>Estado</th><th></th>
+    </tr></thead><tbody>` +
+    n.map(x=>`<tr${x.estado==='Activa'?'':' style="opacity:.55"'}>
+      <td><strong>${esc(x.arete)}</strong></td>
+      <td>${esc(x.nombre)||'—'}</td>
+      <td>${x.sexo==='H'?'Hembra':'Macho'}</td>
+      <td style="color:#6b7268">${esc(x._madre)}</td>
+      <td>${esc(etapa(x))}</td>
+      <td>${x.estado==='Activa'?'En el hato':esc(x.estado)}</td>
+      <td><button class="mini" onclick="abrirFicha('${x.id}')">Ver</button></td>
+    </tr>`).join('') + `</tbody></table></div>`).join('');
+
+  return arriba+`<div class="aviso verde" style="margin:0 0 10px">
+      <strong>${total} descendiente(s)</strong> en total &nbsp; ${resumen}</div>`+tabla;
+}
+
 function pintarFicha(){
   const a=D.ani.find(x=>x.id===FICHA_ID);
   if(!a)return cerrarFicha();
@@ -1992,6 +2067,11 @@ function pintarFicha(){
       ${dato('Valor comercial','C$ '+ni(a.valor||0))}
       ${hijos.length?dato('Crías registradas',hijos.map(h=>esc(h.arete)).join(', ')):''}
     </tbody></table></div>
+
+    <h3 class="sec">Descendencia</h3>
+    <p class="ayuda">Solo por línea materna. Los toros andan con el hato, así que el padre
+      no se anota — sería un dato inventado.</p>
+    ${pintarDescendencia(a)}
 
     <h3 class="sec">Historial</h3>
     <p class="ayuda">Los hechos los anota la app sola. Vos podés agregar notas de lo que pase
@@ -3694,6 +3774,13 @@ function llenarSelects(){
   const fu=document.getElementById('fUsr'),pu=fu.value;
   fu.innerHTML='<option value="">Todos</option>'+usuarios.map(u=>`<option>${esc(u)}</option>`).join('');
   fu.value=usuarios.includes(pu)?pu:'';
+
+  /* madres posibles: toda hembra registrada, viva o no (una cría puede ser de una vaca ya vendida) */
+  const lm=document.getElementById('listaMadres');
+  if(lm) lm.innerHTML=D.ani.filter(x=>x.sexo==='H')
+    .sort((a,b)=>a.arete.localeCompare(b.arete,'es',{numeric:true}))
+    .map(x=>`<option value="${esc(x.arete)}">${esc(x.arete)}${x.nombre?' · '+esc(x.nombre):''}`+
+            `${x.estado!=='Activa'?' ('+esc(x.estado)+')':''}</option>`).join('');
 
   const opLotes=D.lotes.map(l=>`<option value="${l.id}">${esc(l.nombre)}</option>`).join('');
   const al=document.getElementById('aLote'),pa2=al.value;
