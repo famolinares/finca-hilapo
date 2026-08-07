@@ -443,13 +443,32 @@ footer a{color:var(--verde)}
   <section class="pg" id="pg-ventas">
     <div class="aviso verde">
       <strong>Cómo funciona:</strong> en el Hato o en el Inventario, dale <em>Vender</em> a cada animal que
-      querés sacar — se van juntando acá. Después le ponés precio a cada uno, nombre al lote, la fecha y el
-      comprador, y cerrás la venta. Los animales salen del inventario y el ingreso entra solo al Diario.
+      querés sacar — se van juntando acá, como un carrito. Después ponés el precio de <strong>dos formas</strong>:
+      uno por uno, o <strong>un solo total por todo el lote</strong> y la app lo reparte.
+      Le ponés nombre al lote, fecha y comprador, y cerrás la venta: los animales salen del inventario
+      y el ingreso entra solo al Diario.
     </div>
 
     <div class="card">
       <h2 id="carTitulo">Lote de venta en preparación</h2>
       <p class="ayuda">Podés poner el precio directo, o el peso y el precio por libra y la app lo multiplica.</p>
+
+      <div class="aviso" id="cajaLote" style="display:none">
+        <strong>¿Te lo compraron todo junto por un solo precio?</strong>
+        Poné acá el total que te pagaron por el lote y la app se lo reparte a cada animal.
+        <div class="filtros" style="margin-top:8px">
+          <div class="campo"><label>Total pagado por el lote (C$)</label>
+            <input type="number" id="vTotalLote" min="0" step="1" placeholder="ej. 180000"></div>
+          <div class="campo"><label>&nbsp;</label>
+            <button class="b" onclick="repartirTotal('valor')">Repartir según el valor de cada uno</button></div>
+          <div class="campo"><label>&nbsp;</label>
+            <button class="b gris" onclick="repartirTotal('igual')">Repartir en partes iguales</button></div>
+        </div>
+        <p class="ayuda" style="margin:6px 0 0">Repartir <em>según el valor</em> es lo normal: una vaca parida
+          vale más que un ternero, así que se lleva una tajada mayor del total. En <em>partes iguales</em> a
+          todos les toca lo mismo. En los dos casos la suma da exactamente el total que pusiste.</p>
+      </div>
+
       <div id="carContenido"></div>
     </div>
 
@@ -2490,6 +2509,39 @@ function carPeso(id,campo,val){
   c.precio=precioLinea(c);
   guardar();pintarCarrito();
 }
+/* Vender el lote completo por un total: se reparte entre los animales.
+   Se cuida que la suma dé EXACTO el total — el último se lleva el redondeo. */
+function repartirTotal(modo){
+  const t=parseFloat(document.getElementById('vTotalLote').value);
+  if(!isFinite(t)||t<=0)return alert('Poné el total que te pagaron por el lote.');
+  const filas=D.carrito.map(c=>({c,a:D.ani.find(x=>x.id===c.aniId)})).filter(x=>x.a);
+  if(!filas.length)return alert('No hay animales en el lote.');
+
+  let pesos, comoTxt;
+  if(modo==='valor'){
+    const suma=filas.reduce((s,x)=>s+ +(x.a.valor||0),0);
+    if(suma>0){ pesos=filas.map(x=>(+x.a.valor||0)/suma); comoTxt='según el valor anotado de cada animal'; }
+    else { pesos=filas.map(()=>1/filas.length);
+           comoTxt='en partes iguales (ningún animal tiene valor anotado)'; }
+  }else{ pesos=filas.map(()=>1/filas.length); comoTxt='en partes iguales'; }
+
+  const prom=Math.round(t/filas.length*100)/100;
+  if(!confirm(`Se van a repartir C$ ${nf(t)} entre ${filas.length} animal(es), ${comoTxt}.\n\n`+
+     `Promedio: C$ ${nf(prom)} por animal.\n\nEsto reemplaza los precios que haya puestos. ¿Seguir?`))return;
+
+  let acum=0;
+  filas.forEach((x,i)=>{
+    const p = (i===filas.length-1)
+      ? Math.round((t-acum)*100)/100        /* el último cuadra el total exacto */
+      : Math.round(t*pesos[i]*100)/100;
+    acum=Math.round((acum+p)*100)/100;
+    x.c.precio=p;
+    x.c.precioLb=0;                          /* el precio ya no sale del peso */
+  });
+  guardar();pintarCarrito();
+  aviso('Total repartido \u2713');
+}
+
 function pintarCarrito(){
   const cont=document.getElementById('carContenido');
   const tab=document.getElementById('tabVentas');
@@ -2497,6 +2549,7 @@ function pintarCarrito(){
   document.getElementById('carTitulo').textContent=
     D.carrito.length?`Lote de venta — ${D.carrito.length} animal(es)`:'Lote de venta en preparación';
   document.getElementById('cardCheckout').style.display=D.carrito.length?'':'none';
+  const cl=document.getElementById('cajaLote'); if(cl)cl.style.display=D.carrito.length?'':'none';
   if(!D.carrito.length){
     cont.innerHTML='<p class="vacio">No hay nada en el lote. Andá al Hato o al Inventario y dale '+
       '<strong>Vender</strong> a los animales que querés sacar.</p>';return;}
@@ -2529,6 +2582,9 @@ function pintarCarrito(){
     <div class="kpis" style="margin:12px 0">
       <div class="kpi"><div class="lbl">Animales</div><div class="val">${filas.length}</div>
         <div class="sub">${peso?ni(peso)+' lb en total':'sin peso anotado'}</div></div>
+      <div class="kpi"><div class="lbl">Promedio por animal</div>
+        <div class="val">C$ ${ni(filas.length?total/filas.length:0)}</div>
+        <div class="sub">${peso?'C$ '+nf(peso?total/peso:0)+' por libra':'lo que salió cada uno'}</div></div>
       <div class="kpi pos"><div class="lbl">Total de la venta</div><div class="val">C$ ${ni(total)}</div>
         <div class="sub">US$ ${nf(total/D.config.tc)}</div></div>
       <div class="kpi"><div class="lbl">Valor en libros</div><div class="val">C$ ${ni(libros)}</div>
