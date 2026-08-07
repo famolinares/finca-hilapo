@@ -285,6 +285,11 @@ footer a{color:var(--verde)}
             <input type="number" id="mPrecioL" step="0.01" min="0" placeholder="0.00"></div>
           <div class="campo" style="grid-column:span 2"><label>Descripción</label>
             <input type="text" id="mDesc" placeholder="ej. venta de leche del día, 45 litros"></div>
+          <div class="campo" id="cmFoto" style="display:none;grid-column:span 2">
+            <label>Foto de la factura o recibo (opcional)</label>
+            <input type="file" id="mFoto" accept="image/*" capture="environment">
+            <p class="ayuda" style="margin:4px 0 0">Tomale foto con el celular o elegí una imagen. Máximo 8 MB.</p>
+          </div>
           <div class="campo"><label id="lblMonto">Monto (C$)</label>
             <input type="number" id="mMonto" step="0.01" min="0" placeholder="0.00" required></div>
           <div class="campo"><button class="b" type="submit" style="width:100%">Agregar</button></div>
@@ -970,11 +975,13 @@ const MAPA = {
   mov: { tabla:'movimientos', hacia:m=>({
           id:m.id, fecha:m.fecha, tipo:m.tipo, cat:m.cat, descr:m.desc||'',
           monto:+m.monto||0, litros:m.litros==null?null:+m.litros,
-          precio_l:m.precioL==null?null:+m.precioL, usr:m.usr||'' }),
+          precio_l:m.precioL==null?null:+m.precioL,
+          factura_url:m.factura||null, usr:m.usr||'' }),
         desde:r=>{ const m={id:r.id,fecha:r.fecha,tipo:r.tipo,cat:r.cat,
           desc:r.descr||'',monto:+r.monto||0,usr:r.usr||''};
           if(r.litros!=null)m.litros=+r.litros;
           if(r.precio_l!=null)m.precioL=+r.precio_l;
+          if(r.factura_url)m.factura=r.factura_url;
           return m; } },
 
   emp: { tabla:'empleados', hacia:e=>({
@@ -1002,6 +1009,38 @@ const MAPA = {
         desde:r=>({ id:r.id, cuando:r.cuando, usr:r.usr||'',
           accion:r.accion, detalle:r.detalle||'' }) }
 };
+
+/* ------------------- FOTO DE FACTURA (Storage) -------------------
+   Igual que con la base de datos: la carpeta 'facturas' es privada.
+   Para verla, la app pide un link temporal (firmado) en vez de guardar
+   una URL pública — nadie ve la foto de una factura sin haber iniciado
+   sesión en la app. */
+const BUCKET_FACTURAS='facturas';
+async function subirFoto(archivo){
+  if(!archivo)return null;
+  if(!archivo.type||!archivo.type.startsWith('image/'))
+    throw new Error('Ese archivo no es una imagen.');
+  if(archivo.size>8*1024*1024)
+    throw new Error('La foto pesa más de 8 MB. Probá con una más liviana.');
+  const ext=(archivo.name.split('.').pop()||'jpg').toLowerCase().replace(/[^a-z0-9]/g,'')||'jpg';
+  const ruta=`${hoyISO()}/${uid()}.${ext}`;
+  const {error}=await SB.storage.from(BUCKET_FACTURAS).upload(ruta,archivo,{upsert:false});
+  if(error)throw new Error('No se pudo subir la foto: '+error.message);
+  return ruta;
+}
+/* borrado de la foto vieja: si falla (ya no existe, o el bucket no está
+   listo todavía) no se avisa — el movimiento en sí ya se guardó bien. */
+async function borrarFoto(ruta){
+  if(!ruta)return;
+  try{await SB.storage.from(BUCKET_FACTURAS).remove([ruta]);}catch(_){}
+}
+async function verFactura(id){
+  const m=D.mov.find(x=>x.id===id);
+  if(!m||!m.factura)return;
+  const {data,error}=await SB.storage.from(BUCKET_FACTURAS).createSignedUrl(m.factura,60);
+  if(error)return alert('No se pudo abrir la foto: '+error.message);
+  window.open(data.signedUrl,'_blank');
+}
 
 /* ------------------------- LECTURA ------------------------- */
 async function traer(tabla, orden){
@@ -1594,6 +1633,8 @@ function ajustarLeche(){
   const on=esLeche();
   document.getElementById('cmLitros').style.display=on?'':'none';
   document.getElementById('cmPrecio').style.display=on?'':'none';
+  document.getElementById('cmFoto').style.display=
+    document.getElementById('mTipo').value==='Egreso'?'':'none';
   const m=document.getElementById('mMonto');
   m.readOnly=on;
   m.style.background=on?'#f2f5f2':'';
@@ -1614,7 +1655,7 @@ document.getElementById('mTipo').addEventListener('change',llenarCatForm);
 document.getElementById('mCat').addEventListener('change',ajustarLeche);
 ['mLitros','mPrecioL'].forEach(i=>
   document.getElementById(i).addEventListener('input',calcularLeche));
-document.getElementById('fMov').addEventListener('submit',e=>{
+document.getElementById('fMov').addEventListener('submit',async e=>{
   e.preventDefault();
   const leche=esLeche();
   let litros=0,precioL=0;
@@ -1633,10 +1674,19 @@ document.getElementById('fMov').addEventListener('submit',e=>{
     tipo:document.getElementById('mTipo').value,cat:document.getElementById('mCat').value,
     desc:desc,monto:monto,usr:USR.u};
   if(leche){m.litros=litros;m.precioL=precioL;}
+  const fotoInput=document.getElementById('mFoto');
+  const archivo=fotoInput.files[0];
+  if(archivo){
+    const btn=e.target.querySelector('button[type=submit]');
+    if(btn){btn.disabled=true;btn.textContent='Subiendo foto...';}
+    try{ m.factura=await subirFoto(archivo); }
+    catch(err){ alert('El movimiento se va a guardar, pero la foto no se pudo subir:\n\n'+err.message); }
+    if(btn){btn.disabled=false;btn.textContent='Agregar';}
+  }
   D.mov.push(m);
   guardar();
   document.getElementById('mDesc').value='';document.getElementById('mMonto').value='';
-  document.getElementById('mLitros').value='';
+  document.getElementById('mLitros').value='';fotoInput.value='';
   /* el precio se deja puesto: normalmente es el mismo varios días seguidos */
   (leche?document.getElementById('mLitros'):document.getElementById('mMonto')).focus();
   pintar();
@@ -1652,6 +1702,7 @@ function borrarMov(id){
   apuntarBitacora('Borró un movimiento',
     `${fecha(m.fecha)} · ${m.tipo} · ${m.cat} · C$ ${nf(m.monto)}${m.desc?' — '+m.desc:''}`);
   guardar();pintar();
+  if(m.factura)borrarFoto(m.factura);
 }
 function tablaDiario(){
   const mes=document.getElementById('fMes').value,anio=document.getElementById('fAnio').value,
@@ -1678,6 +1729,7 @@ function tablaDiario(){
       <td class="num" style="color:#6b7268">${nf(v.monto/D.config.tc)}</td>
       <td style="color:#6b7268">${esc(v.usr)||'—'}</td>
       <td><button class="mini" onclick="editarMov('${v.id}')">Editar</button>
+          ${v.factura?`<button class="mini" onclick="verFactura('${v.id}')">Factura</button>`:''}
           <button class="mini x" onclick="borrarMov('${v.id}')">Borrar</button></td></tr>`).join('')+
     `</tbody><tfoot>
       <tr><td colspan="4">Ingresos (${l.filter(v=>v.tipo==='Ingreso').length})</td>
@@ -1932,6 +1984,14 @@ function editarMov(id){
         <input type="number" id="edMMonto" min="0" step="0.01" value="${+m.monto||0}"></div>
       <div class="campo" style="grid-column:span 2"><label>Descripción</label>
         <input type="text" id="edMDesc" value="${esc(m.desc)}"></div>
+      <div class="campo" style="grid-column:span 2">
+        <label>Foto de la factura o recibo</label>
+        ${m.factura?`<div style="margin-bottom:6px"><button type="button" class="mini" onclick="verFactura('${m.id}')">Ver foto actual</button></div>`:''}
+        <input type="file" id="edMFoto" accept="image/*" capture="environment">
+        <p class="ayuda" style="margin:4px 0 0">${m.factura
+          ?'Elegí una imagen nueva para reemplazarla, o dejalo vacío para conservar la que ya está.'
+          :'Opcional. Tomale foto con el celular o elegí una imagen. Máximo 8 MB.'}</p>
+      </div>
     </div>
     <p class="ayuda" style="margin-top:8px">Si llenás litros y precio, el monto se recalcula solo.
       Dejalos vacíos si no es una venta de leche.</p>`);
@@ -1945,7 +2005,7 @@ function recalcLecheEdit(){
   const p=parseFloat(document.getElementById('edMPrecioL').value)||0;
   if(l>0&&p>0)document.getElementById('edMMonto').value=Math.round(l*p*100)/100;
 }
-function guardarMov(){
+async function guardarMov(){
   const m=D.mov.find(x=>x.id===EDIT.id);if(!m)return cerrarEditar();
   const v=id=>document.getElementById(id).value;
   const f=v('edMFecha');
@@ -1953,6 +2013,15 @@ function guardarMov(){
   const li=parseFloat(v('edMLitros')), pr=parseFloat(v('edMPrecioL'));
   const monto=parseFloat(v('edMMonto'));
   if(!isFinite(monto)||monto<0)return errEdit('El monto no es válido.');
+  const fotoInput=document.getElementById('edMFoto');
+  const archivo=fotoInput&&fotoInput.files[0];
+  let fotoVieja=null;
+  if(archivo){
+    let nueva;
+    try{ nueva=await subirFoto(archivo); }
+    catch(err){ return errEdit(err.message); }
+    fotoVieja=m.factura||null; m.factura=nueva;
+  }
   m.fecha=f;m.tipo=v('edMTipo');m.cat=v('edMCat');m.desc=v('edMDesc').trim();m.monto=monto;
   if(isFinite(li)&&li>0){m.litros=li;}else{delete m.litros;}
   if(isFinite(pr)&&pr>0){m.precioL=pr;}else{delete m.precioL;}
@@ -1960,6 +2029,7 @@ function guardarMov(){
   D.planillas.forEach(p=>p.lineas.forEach(l=>{
     if(l.movId===m.id){l.monto=monto;l.fechaPago=f;}}));
   guardar();cerrarEditar();pintar();
+  if(fotoVieja)borrarFoto(fotoVieja);
 }
 
 function guardarEdicion(){
