@@ -519,17 +519,22 @@ footer a{color:var(--verde)}
     </div>
 
     <div class="card">
-      <h2>Abrir planilla de una quincena</h2>
-      <p class="ayuda">Se arma con todos los empleados activos. Después ajustás los días que trabajó cada
+      <h2>Abrir planilla de un período</h2>
+      <p class="ayuda">Elegí las fechas exactas del período de pago — las que sean, no tienen que ser
+        del 1 al 15. Se arma con todos los empleados activos; después ajustás los días que trabajó cada
         uno y les vas pagando de a uno.</p>
       <div class="filtros">
-        <div class="campo"><label>Mes</label><select id="qMes"></select></div>
-        <div class="campo"><label>Año</label><select id="qAnio"></select></div>
-        <div class="campo"><label>Quincena</label>
-          <select id="qNum"><option value="1">1ª — del 1 al 15</option>
-            <option value="2">2ª — del 16 a fin de mes</option></select></div>
-        <div class="campo"><button class="b" onclick="abrirPlanilla()">Abrir planilla</button></div>
+        <div class="campo"><label>Desde</label><input type="date" id="qDesde"></div>
+        <div class="campo"><label>Hasta</label><input type="date" id="qHasta"></div>
+        <div class="campo"><label>&nbsp;</label>
+          <button class="b" onclick="abrirPlanilla()">Abrir planilla</button></div>
       </div>
+      <p class="ayuda" style="margin-top:2px">Atajos:
+        <button class="mini" onclick="periodoRapido('q1')">1 al 15</button>
+        <button class="mini" onclick="periodoRapido('q2')">16 a fin de mes</button>
+        <button class="mini" onclick="periodoRapido('mes')">Mes completo</button>
+        <button class="mini" onclick="periodoRapido('sem')">Última semana</button>
+      </p>
       <div id="qAviso"></div>
     </div>
 
@@ -549,7 +554,7 @@ footer a{color:var(--verde)}
 
     <div class="card">
       <h2>Planillas</h2>
-      <p class="ayuda">Historial de quincenas. Dale clic a cualquiera para abrirla.</p>
+      <p class="ayuda">Historial de planillas. Dale clic a cualquiera para abrirla.</p>
       <div class="tabla-cont" id="tblPlanillas"></div>
     </div>
   </section>
@@ -1023,7 +1028,8 @@ async function cargarTodo(){
     usrPago:l.usr_pago||'' }));
   D.planillas = pla.map(p => ({
     id:p.id, periodo:p.periodo, periodoTxt:p.periodo_txt, anio:p.anio, mes:p.mes,
-    q:p.q, diasBase:+p.dias_base||15, usr:p.usr||'',
+    q:p.q, desde:p.desde||'', hasta:p.hasta||'',
+    diasBase:+p.dias_base||15, usr:p.usr||'',
     creada:(p.creada||'').slice(0,10), lineas: porPlanilla[p.id] || [] }));
 
   /* carrito */
@@ -1100,7 +1106,8 @@ async function sincronizar(){
     (D.planillas||[]).map(p=>({...p, lineas:undefined})));
   await subir('planillas', dp.subir.map(p=>({
     id:p.id, periodo:p.periodo, periodo_txt:p.periodoTxt||'', anio:p.anio,
-    mes:p.mes, q:p.q, dias_base:+p.diasBase||15, usr:p.usr||'' })));
+    mes:p.mes, q:p.q||null, desde:oNull(p.desde), hasta:oNull(p.hasta),
+    dias_base:+p.diasBase||15, usr:p.usr||'' })));
   await borrar('planillas', dp.borrar);
 
   const linAntes = aplanar(FOTO.planillas,'lineas',(p,l)=>({...l, _p:p.id}));
@@ -2779,6 +2786,26 @@ function textoPeriodo(y,m,q){
   const r=rangoQuincena(y,m,q);
   return `${r.ini}–${r.fin} de ${MESES[m-1].toLowerCase()} ${y}`;
 }
+/* ---- período libre: de una fecha a otra ---- */
+const partesFecha=iso=>{const p=(iso||'').split('-');return {y:+p[0],m:+p[1],d:+p[2]};};
+function textoPeriodoFechas(a,b){
+  const A=partesFecha(a), B=partesFecha(b);
+  const mA=MESES[A.m-1].toLowerCase(), mB=MESES[B.m-1].toLowerCase();
+  if(A.y===B.y&&A.m===B.m) return `${A.d} al ${B.d} de ${mA} ${A.y}`;
+  if(A.y===B.y)            return `${A.d} de ${mA} al ${B.d} de ${mB} ${A.y}`;
+  return `${A.d} de ${mA} ${A.y} al ${B.d} de ${mB} ${B.y}`;
+}
+function periodoRapido(cual){
+  const h=new Date(), y=h.getFullYear(), m=h.getMonth()+1, dd=n=>String(n).padStart(2,'0');
+  let d1,d2;
+  if(cual==='q1'){ d1=`${y}-${dd(m)}-01`; d2=`${y}-${dd(m)}-15`; }
+  else if(cual==='q2'){ d1=`${y}-${dd(m)}-16`; d2=`${y}-${dd(m)}-${dd(ultimoDia(y,m))}`; }
+  else if(cual==='mes'){ d1=`${y}-${dd(m)}-01`; d2=`${y}-${dd(m)}-${dd(ultimoDia(y,m))}`; }
+  else { const f=new Date(h); f.setDate(f.getDate()-6);
+         d1=`${f.getFullYear()}-${dd(f.getMonth()+1)}-${dd(f.getDate())}`; d2=hoyISO(); }
+  document.getElementById('qDesde').value=d1;
+  document.getElementById('qHasta').value=d2;
+}
 
 document.getElementById('fEmp').addEventListener('submit',e=>{
   e.preventDefault();
@@ -2872,26 +2899,31 @@ const montoPorDias=(salarioQ,dias,diasBase)=>
   Math.round((+salarioQ||0)/(diasBase||15)*(+dias||0)*100)/100;
 
 function abrirPlanilla(){
-  const y=+document.getElementById('qAnio').value, m=+document.getElementById('qMes').value,
-        q=+document.getElementById('qNum').value;
-  const clave=clavePeriodo(y,m,q);
-  const ya=planillaPorClave(clave);
-  if(ya){PLANILLA_SEL=ya.id;pintarPlanilla();tablaPlanillas();
-    document.getElementById('qAviso').innerHTML=
-      `<div class="aviso">Esa quincena ya tenía planilla abierta. Te la muestro abajo.</div>`;return;}
+  const d1=document.getElementById('qDesde').value, d2=document.getElementById('qHasta').value;
+  if(!d1||!d2) return alert('Poné la fecha de inicio y la de fin del período.');
+  if(d2<d1)    return alert('La fecha de fin no puede ser anterior a la de inicio.');
+  const dias=diasEntre(d1,d2);
+  if(dias>62&&!confirm(`Ese período tiene ${dias} días. ¿Está bien?`))return;
+
+  /* aviso si se cruza con otra planilla, pero no lo bloqueo */
+  const choca=D.planillas.find(p=>p.desde&&p.hasta&&!(d2<p.desde||d1>p.hasta));
+  if(choca&&!confirm(`Ya hay una planilla que se cruza con esas fechas:\n\n${choca.periodoTxt}\n\n`+
+     '¿Abrir otra de todos modos?'))return;
+
   const act=empActivos();
   if(!act.length)return alert('No hay empleados activos. Agregá alguno primero.');
-  const diasBase=diasDelPeriodo(y,m,q);
-  const p={id:uid(),periodo:clave,periodoTxt:textoPeriodo(y,m,q),anio:y,mes:m,q:q,
-    diasBase:diasBase,creada:hoyISO(),usr:USR.u,
+  const A=partesFecha(d1);
+  const p={id:uid(),periodo:`${d1}_${d2}`,periodoTxt:textoPeriodoFechas(d1,d2),
+    desde:d1,hasta:d2,anio:A.y,mes:A.m,q:null,diasBase:dias,creada:hoyISO(),usr:USR.u,
     lineas:act.map(e=>({id:uid(),empId:e.id,nombre:nomEmp(e),cargo:e.cargo||'',
-      salarioQ:+e.salarioQ||0,dias:diasBase,monto:+e.salarioQ||0,nota:'',
+      salarioQ:+e.salarioQ||0,dias:dias,monto:+e.salarioQ||0,nota:'',
       pagado:false,fechaPago:'',movId:'',usrPago:''}))};
   D.planillas.push(p);PLANILLA_SEL=p.id;
   guardar();pintar();
   document.getElementById('qAviso').innerHTML=
-    `<div class="aviso verde">Planilla del ${p.periodoTxt} abierta con ${p.lineas.length} empleado(s),
-     ${diasBase} días de período. Ajustá los días abajo y andá pagando.</div>`;
+    `<div class="aviso verde">Planilla del <strong>${esc(p.periodoTxt)}</strong> abierta con
+     ${p.lineas.length} empleado(s) y <strong>${dias} días</strong> de período.
+     Ajustá los días de cada uno abajo y andá pagando.</div>`;
 }
 function verPlanilla(id){PLANILLA_SEL=id;pintarPlanilla();tablaPlanillas();
   document.getElementById('qAviso').innerHTML='';
@@ -3627,13 +3659,9 @@ function llenarSelects(){
   if(!rd.value)rd.value=`${y}-${String(new Date().getMonth()+1).padStart(2,'0')}-01`;
   if(!rh.value)rh.value=hoyISO();
 
-  const qa=document.getElementById('qAnio'),pq=qa.value;
-  qa.innerHTML=op;qa.value=anios.includes(+pq)?pq:y;
-  const qm=document.getElementById('qMes');
-  if(!qm.options.length){
-    qm.innerHTML=MESES.map((m,i)=>`<option value="${i+1}">${m}</option>`).join('');
-    qm.value=new Date().getMonth()+1;
-  }
+  /* período de planilla: si están vacíos, propongo la quincena en curso */
+  const qd=document.getElementById('qDesde');
+  if(qd&&!qd.value) periodoRapido(new Date().getDate()<=15?'q1':'q2');
 
   const fm=document.getElementById('fMes');
   if(!fm.options.length){
@@ -3699,7 +3727,7 @@ document.getElementById('hBuscar').addEventListener('input',tablaHato);
 document.getElementById('eFiltro').addEventListener('change',tablaEmp);
 ['invPor','invVer'].forEach(i=>document.getElementById(i).addEventListener('change',()=>{
   ABIERTOS.clear();tablaInventario();}));
-['qMes','qAnio','qNum'].forEach(i=>
+['qDesde','qHasta'].forEach(i=>
   document.getElementById(i).addEventListener('change',()=>{
     document.getElementById('qAviso').innerHTML='';}));
 ['movDe','movEt'].forEach(i=>document.getElementById(i).addEventListener('change',previsualizarMovimiento));
