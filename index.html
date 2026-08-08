@@ -1469,6 +1469,18 @@ const cs=n=>'C$ '+nf(n);
 const us=n=>'US$ '+nf((n||0)/(D.config.tc||1));
 function fecha(iso){if(!iso)return'';const p=iso.split('-');return `${p[2]}/${p[1]}/${p[0]}`;}
 function hoyISO(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+/* de una edad aproximada (años, admite decimales) a una fecha de
+   nacimiento ESTIMADA (hoy menos esa edad). Se guarda como fecha de
+   nacimiento de verdad — así todo lo demás (etapa, hitos futuros,
+   clasificación) sigue avanzando solo con el tiempo, exactamente
+   igual que con una fecha real. edadAprox queda guardado aparte solo
+   para poder mostrar "≈ aproximada" en vez de hacerla pasar por exacta. */
+function fechaDesdeEdad(anios){
+  const hoy=new Date();
+  const meses=Math.round((+anios||0)*12);
+  const d=new Date(hoy.getFullYear(), hoy.getMonth()-meses, hoy.getDate());
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
 function mesesDesde(iso){
   if(!iso)return null;
   const p=iso.split('-').map(Number),h=new Date();
@@ -1519,7 +1531,7 @@ function etapa(a){
     const base=(MANEJOS.find(m=>m.v===a.manejo)||MANEJOS[1]).e;
     return prena?base+' y preñada':base;
   }
-  const e=edadMesesAprox(a);
+  const e=mesesDesde(a.fnac);
   if(e===null)return 'Falta fecha de nacimiento o edad aproximada';
   const H=a.sexo==='H';
   /* mamando */
@@ -1589,13 +1601,8 @@ const PROBLEMA_SALUD_LABEL={ubre:'Problema de ubre',patas:'Problema de patas',cr
    poder estimar crías y vaquillas, no solo vacas paridas). Sirve para
    CUALQUIER animal, no solo vacas: en la carga inicial de la finca
    casi nunca se sabe la fecha exacta de nacimiento de nadie. */
-function edadMesesAprox(a){
-  const m=mesesDesde(a.fnac);
-  if(m!==null)return m;
-  return (a.edadAprox!=null&&a.edadAprox!=='')?Math.round(+a.edadAprox*12):null;
-}
 function edadAnios(a){
-  const m=edadMesesAprox(a);
+  const m=mesesDesde(a.fnac);
   return m===null?null:Math.floor(m/12);
 }
 function clasificarVaca(a){
@@ -2122,9 +2129,17 @@ document.getElementById('fAni').addEventListener('submit',e=>{
   const esMacho=document.getElementById('aSexo').value==='M';
   if(esMacho&&!document.getElementById('aDestino').value)
     return alert('Falta decir qué es este macho:\n\n· Toro semental (reproductor)\n· Novillo de engorde\n· Macho en inventario (si todavía no se decide)\n\nSin eso no aparece bien en el inventario.');
+  /* fecha de nacimiento: la real si se puso, o si no, una ESTIMADA a
+     partir de la edad aproximada (hoy menos esa edad) — para que la
+     etapa se siga recalculando sola con el tiempo, igual que con una
+     fecha exacta. edadAprox se guarda aparte solo para mostrar "≈". */
+  const fnacInput=document.getElementById('aFnac').value;
+  const edadAproxInput=document.getElementById('aEdadAprox').value;
+  const fnacFinal=fnacInput||(edadAproxInput?fechaDesdeEdad(edadAproxInput):'');
+  const edadAproxFinal=(!fnacInput&&edadAproxInput)?edadAproxInput:null;
   D.ani.push({id:uid(),arete:arete,nombre:document.getElementById('aNombre').value.trim(),
     sexo:document.getElementById('aSexo').value,raza:document.getElementById('aRaza').value.trim(),
-    fnac:document.getElementById('aFnac').value,
+    fnac:fnacFinal,
     lote:document.getElementById('aLote').value,madre:document.getElementById('aMadre').value.trim(),
     partos:+document.getElementById('aPartos').value||0,
     manejo:document.getElementById('aManejo').value,
@@ -2136,7 +2151,7 @@ document.getElementById('fAni').addEventListener('submit',e=>{
     valor:+document.getElementById('aValor').value||0,
     obs:document.getElementById('aObs').value.trim(),estado:'Activa',usr:USR.u,hist:[],
     cc:document.getElementById('aCC').value||null,
-    edadAprox:document.getElementById('aEdadAprox').value||null,
+    edadAprox:edadAproxFinal,
     temporadasVacia:+document.getElementById('aTempVacia').value||0,
     problemaSalud:document.getElementById('aProblemaSalud').value});
   const nuevo=D.ani[D.ani.length-1];
@@ -2211,9 +2226,10 @@ function editarAnimal(id){
         <input type="number" id="edLitros" min="0" step="0.1" value="${+a.litros||0}"></div>
       <div class="campo"><label>CC — condición corporal (1–9, solo vacas)</label>
         <input type="number" id="edCC" min="1" max="9" step="1" value="${a.cc==null?'':a.cc}"></div>
-      <div class="campo"><label>Edad aproximada (años, si no hay fecha de nacimiento — cualquier animal)</label>
-        <input type="number" id="edEdadAprox" min="0" step="0.5" placeholder="ej. 0.5 = 6 meses"
-          value="${a.edadAprox==null?'':a.edadAprox}"></div>
+      <div class="campo"><label>Volver a estimar la edad (años)${a.edadAprox!=null?' — hoy tiene ≈'+a.edadAprox+' años estimados':''}</label>
+        <input type="number" id="edEdadAprox" min="0" step="0.5" placeholder="dejalo vacío para no cambiar nada">
+        <p class="ayuda" style="margin:4px 0 0">Solo llenalo si querés corregir la edad — recalcula la fecha
+          de nacimiento estimada. Si lo dejás vacío, no se toca nada.</p></div>
       <div class="campo"><label>Temporadas vacía seguidas (solo vacas)</label>
         <input type="number" id="edTempVacia" min="0" step="1" value="${+a.temporadasVacia||0}"></div>
       <div class="campo"><label>Problema de salud (solo vacas)</label><select id="edProblemaSalud">
@@ -2262,13 +2278,23 @@ function guardarAnimal(){
     if(n)cambios.push(`Se actualizó la madre en ${n} cría(s)`);
   }
   a.arete=arete; a.nombre=v('edNombre').trim(); a.sexo=v('edSexo'); a.raza=v('edRaza').trim();
-  a.fnac=v('edFnac'); a.madre=v('edMadre').trim(); a.lote=v('edLote');
+  a.madre=v('edMadre').trim(); a.lote=v('edLote');
   a.partos=partos; a.manejo=v('edManejo'); a.destino=v('edDestino');
   a.litros=(a.partos>=1&&a.manejo!=='ordeno')?0:litros;
   a.prenada=!!v('edPrenada'); a.fServicio=a.prenada?v('edServicio'):'';
   a.valor=valor; a.estado=v('edEstado'); a.obs=v('edObs').trim();
-  a.cc=v('edCC')||null; a.edadAprox=v('edEdadAprox')||null;
-  a.temporadasVacia=+v('edTempVacia')||0; a.problemaSalud=v('edProblemaSalud');
+  a.cc=v('edCC')||null; a.temporadasVacia=+v('edTempVacia')||0; a.problemaSalud=v('edProblemaSalud');
+
+  /* fecha de nacimiento: si escribió una edad nueva para reestimar, esa
+     manda y recalcula la fecha estimada. Si no, y cambió la fecha a
+     mano, esa manda y deja de ser "aproximada". Si no tocó ninguna de
+     las dos, se deja tal cual estaba (no se recalcula solo). */
+  const edadNueva=v('edEdadAprox'), fnacNuevo=v('edFnac');
+  if(edadNueva){
+    const fEstim=fechaDesdeEdad(edadNueva);
+    cambios.push(`Nacimiento (reestimado): ${fecha(a.fnac)||'sin fecha'} → ≈${fecha(fEstim)} (~${edadNueva} años)`);
+    a.fnac=fEstim; a.edadAprox=edadNueva;
+  }else if(fnacNuevo!==a.fnac){ a.fnac=fnacNuevo; a.edadAprox=null; }
 
   if(antes.etapa!==etapa(a))cambios.push(`Categoría: ${antes.etapa} → ${etapa(a)}`);
   const loteAhora=a.lote?nomLote(a.lote):'sin lote';
@@ -2497,7 +2523,7 @@ function pintarDescendencia(a){
 function pintarFicha(){
   const a=D.ani.find(x=>x.id===FICHA_ID);
   if(!a)return cerrarFicha();
-  const e=edadMesesAprox(a), ac=a.estado==='Activa';
+  const e=mesesDesde(a.fnac), ac=a.estado==='Activa';
   const hijos=D.ani.filter(x=>x.madre&&a.arete&&x.madre.toLowerCase()===a.arete.toLowerCase());
   const dp=diasParaParto(a);
   /* historial escrito + hitos calculados de la fecha de nacimiento */
@@ -2520,7 +2546,7 @@ function pintarFicha(){
       ${dato('Nacimiento',fecha(a.fnac)||'sin fecha')}
       ${dato('Edad',e===null?'—':
         (e>=24?Math.floor(e/12)+' años '+(e%12)+' meses':e+' meses')
-        +(a.fnac?'':' (aproximada)'))}
+        +(a.edadAprox!=null&&a.edadAprox!==''?' (aproximada)':''))}
       ${dato('Madre',esc(a.madre)||'sin anotar')}
       ${dato('Lote',esc(nomLote(a.lote))||'sin lote')}
       ${(+a.partos||0)>=1?dato('Partos',a.partos):''}
@@ -2870,7 +2896,7 @@ function tablaHato(){
     <th>Lote</th><th class="num">Partos</th><th class="num">Litros/día</th><th class="num">Valor C$</th>
     <th>Madre</th><th></th></tr></thead><tbody>`+
     l.map(a=>{
-      const e=edadMesesAprox(a),et=etapa(a),ac=a.estado==='Activa';
+      const e=mesesDesde(a.fnac),et=etapa(a),ac=a.estado==='Activa';
       const dp=diasParaParto(a);
       let repro='—';
       if(a.prenada){
@@ -2884,7 +2910,7 @@ function tablaHato(){
         <td>${esc(a.nombre)||'—'}</td><td>${a.sexo==='H'?'Hembra':'Macho'}</td>
         <td><button class="mini" onclick="cambiarRaza('${a.id}')">${esc(a.raza)||'sin raza'}</button></td>
         <td>${fecha(a.fnac)||'—'}</td>
-        <td class="num">${e===null?'—':(a.fnac?'':'≈ ')+(e>=24?Math.floor(e/12)+' a '+(e%12)+' m':e+' m')}</td>
+        <td class="num">${e===null?'—':(a.edadAprox!=null&&a.edadAprox!==''?'≈ ':'')+(e>=24?Math.floor(e/12)+' a '+(e%12)+' m':e+' m')}</td>
         <td>${!ac?`<span class="pill inact">${esc(et)}</span>`
              :(a.sexo==='M'&&et!=='Ternero'&&et!=='Ternero destetado')
               ?`<button class="mini" onclick="cambiarDestino('${a.id}')">${esc(et)}</button>`
