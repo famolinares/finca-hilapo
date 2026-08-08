@@ -918,6 +918,7 @@ function normalizar(d){
        las que tenían litros pasan a ordeño, las demás quedan secas. */
     if(!MANEJOS.some(m=>m.v===a.manejo))a.manejo=((+a.litros||0)>0)?'ordeno':'seca';
     if(!Array.isArray(a.hist))a.hist=[];
+    if(!Array.isArray(a.fotos))a.fotos=[];
     if(a.temporadasVacia==null)a.temporadasVacia=0;
     if(a.problemaSalud==null)a.problemaSalud='';
   });
@@ -1109,13 +1110,14 @@ const MAPA = {
           accion:r.accion, detalle:r.detalle||'' }) }
 };
 
-/* ------------------- FOTO DE FACTURA (Storage) -------------------
-   Igual que con la base de datos: la carpeta 'facturas' es privada.
-   Para verla, la app pide un link temporal (firmado) en vez de guardar
-   una URL pública — nadie ve la foto de una factura sin haber iniciado
-   sesión en la app. */
+/* ------------------- FOTOS (Storage) -------------------
+   Dos carpetas privadas: 'facturas' (recibos de egresos) y 'ganado'
+   (fotos de animales). Para verlas, la app pide un link temporal
+   (firmado) en vez de guardar una URL pública — nadie ve una foto sin
+   haber iniciado sesión en la app. */
 const BUCKET_FACTURAS='facturas';
-async function subirFoto(archivo){
+const BUCKET_GANADO='ganado';
+async function subirFoto(bucket,archivo){
   if(!archivo)return null;
   if(!archivo.type||!archivo.type.startsWith('image/'))
     throw new Error('Ese archivo no es una imagen.');
@@ -1123,32 +1125,41 @@ async function subirFoto(archivo){
     throw new Error('La foto pesa más de 8 MB. Probá con una más liviana.');
   const ext=(archivo.name.split('.').pop()||'jpg').toLowerCase().replace(/[^a-z0-9]/g,'')||'jpg';
   const ruta=`${hoyISO()}/${uid()}.${ext}`;
-  const {error}=await SB.storage.from(BUCKET_FACTURAS).upload(ruta,archivo,{upsert:false});
+  const {error}=await SB.storage.from(bucket).upload(ruta,archivo,{upsert:false});
   if(error)throw new Error('No se pudo subir la foto: '+error.message);
   return ruta;
 }
 /* borrado de la foto vieja: si falla (ya no existe, o el bucket no está
-   listo todavía) no se avisa — el movimiento en sí ya se guardó bien. */
-async function borrarFoto(ruta){
+   listo todavía) no se avisa — el registro en sí ya se guardó bien. */
+async function borrarFoto(bucket,ruta){
   if(!ruta)return;
-  try{await SB.storage.from(BUCKET_FACTURAS).remove([ruta]);}catch(_){}
+  try{await SB.storage.from(bucket).remove([ruta]);}catch(_){}
 }
 /* la foto se ve DENTRO de la app, en una ventanita — antes se abría en
    pestaña nueva con window.open(), pero como eso pasa después de un
    await (pedirle el link firmado a Supabase), el celular ya no lo
    reconoce como "el usuario tocó un botón" y en vez de pestaña nueva
    saca a la persona de la app entera. Mostrándola adentro no hay ese
-   problema y además nunca hay que salir para volver a ver el Diario. */
-async function verFactura(id){
-  const m=D.mov.find(x=>x.id===id);
-  if(!m||!m.factura)return;
+   problema y además nunca hay que salir para volver a la pantalla. */
+async function mostrarFotoModal(bucket,ruta){
   const cont=document.getElementById('fotoCuerpo');
   cont.innerHTML='<p class="vacio">Abriendo la foto…</p>';
   document.getElementById('modalFoto').style.display='flex';
-  const {data,error}=await SB.storage.from(BUCKET_FACTURAS).createSignedUrl(m.factura,60);
+  const {data,error}=await SB.storage.from(bucket).createSignedUrl(ruta,60);
   if(error){ cont.innerHTML=`<p class="vacio">No se pudo abrir la foto: ${esc(error.message)}</p>`; return; }
-  cont.innerHTML=`<img src="${esc(data.signedUrl)}" alt="Factura"
+  cont.innerHTML=`<img src="${esc(data.signedUrl)}" alt="Foto"
     style="max-width:100%;max-height:78vh;border-radius:8px;display:block;margin:0 auto">`;
+}
+async function verFactura(id){
+  const m=D.mov.find(x=>x.id===id);
+  if(!m||!m.factura)return;
+  await mostrarFotoModal(BUCKET_FACTURAS,m.factura);
+}
+async function verFotoAnimal(animalId,fotoId){
+  const a=D.ani.find(x=>x.id===animalId); if(!a)return;
+  const f=(a.fotos||[]).find(x=>x.id===fotoId);
+  if(!f||!f.ruta)return;
+  await mostrarFotoModal(BUCKET_GANADO,f.ruta);
 }
 function cerrarFoto(){ document.getElementById('modalFoto').style.display='none';
   document.getElementById('fotoCuerpo').innerHTML=''; }
@@ -1162,34 +1173,44 @@ function mostrarNombreFoto(inputId,outId){
 }
 
 /* ---------- cola de fotos pendientes (IndexedDB) ----------
-   Si no hay señal justo cuando se anota el egreso, la foto de la factura
-   NO se pierde: se guarda en este aparato (IndexedDB, aguanta imágenes,
-   a diferencia de localStorage) y se sube sola en cuanto vuelva la señal. */
+   Sirve para las dos cosas que suben foto: la factura de un egreso y
+   las fotos del ganado. Si no hay señal justo cuando se toma la foto,
+   NO se pierde: se guarda en este aparato (IndexedDB, aguanta
+   imágenes, a diferencia de localStorage) y se sube sola en cuanto
+   vuelva la señal. Cada pendiente se guarda con el mismo id del
+   registro al que pertenece (el movimiento o la foto del animal). */
 const FOTOS_DB='fh_fotos', FOTOS_STORE='pendientes';
 function abrirFotosDB(){
   return new Promise((resolve,reject)=>{
     if(!window.indexedDB)return reject(new Error('Este navegador no soporta guardar fotos sin conexión.'));
-    const req=indexedDB.open(FOTOS_DB,1);
-    req.onupgradeneeded=()=>{ req.result.createObjectStore(FOTOS_STORE,{keyPath:'movId'}); };
+    const req=indexedDB.open(FOTOS_DB,2);
+    req.onupgradeneeded=(e)=>{
+      const db=req.result;
+      /* la versión 1 guardaba la llave como "movId" (solo facturas).
+         se recrea con una llave propia para poder guardar también
+         fotos pendientes de animales al mismo tiempo. */
+      if(db.objectStoreNames.contains(FOTOS_STORE))db.deleteObjectStore(FOTOS_STORE);
+      db.createObjectStore(FOTOS_STORE,{keyPath:'id'});
+    };
     req.onsuccess=()=>resolve(req.result);
     req.onerror=()=>reject(req.error);
   });
 }
-async function guardarFotoPendiente(movId,archivo){
+async function guardarFotoPendiente(id,destino,archivo){
   const db=await abrirFotosDB();
   return new Promise((resolve,reject)=>{
     const tx=db.transaction(FOTOS_STORE,'readwrite');
-    tx.objectStore(FOTOS_STORE).put({movId,blob:archivo,tipo:archivo.type,
-      nombre:archivo.name||'factura.jpg',creado:Date.now()});
+    tx.objectStore(FOTOS_STORE).put({id,destino,blob:archivo,tipo:archivo.type,
+      nombre:archivo.name||'foto.jpg',creado:Date.now()});
     tx.oncomplete=()=>resolve();
     tx.onerror=()=>reject(tx.error);
   });
 }
-async function borrarFotoPendiente(movId){
+async function borrarFotoPendiente(id){
   const db=await abrirFotosDB();
   return new Promise((resolve,reject)=>{
     const tx=db.transaction(FOTOS_STORE,'readwrite');
-    tx.objectStore(FOTOS_STORE).delete(movId);
+    tx.objectStore(FOTOS_STORE).delete(id);
     tx.oncomplete=()=>resolve();
     tx.onerror=()=>reject(tx.error);
   });
@@ -1209,13 +1230,23 @@ async function reintentarFotosPendientes(){
   let lista=[];
   try{ lista=await fotosPendientes(); }catch(e){ return; }
   for(const f of lista){
-    const m=D.mov.find(x=>x.id===f.movId);
-    if(!m||m.factura){ borrarFotoPendiente(f.movId).catch(()=>{}); continue; }
     try{
-      const archivo=new File([f.blob], f.nombre, {type:f.tipo||'image/jpeg'});
-      m.factura=await subirFoto(archivo);
-      await borrarFotoPendiente(f.movId);
-      guardar();
+      if(f.destino==='mov'){
+        const m=D.mov.find(x=>x.id===f.id);
+        if(!m||m.factura){ await borrarFotoPendiente(f.id); continue; }
+        const archivo=new File([f.blob], f.nombre, {type:f.tipo||'image/jpeg'});
+        m.factura=await subirFoto(BUCKET_FACTURAS,archivo);
+        await borrarFotoPendiente(f.id);
+        guardar();
+      }else if(f.destino==='animalFoto'){
+        let foto=null;
+        for(const a of D.ani){ const ft=(a.fotos||[]).find(x=>x.id===f.id); if(ft){foto=ft;break;} }
+        if(!foto||foto.ruta){ await borrarFotoPendiente(f.id); continue; }
+        const archivo=new File([f.blob], f.nombre, {type:f.tipo||'image/jpeg'});
+        foto.ruta=await subirFoto(BUCKET_GANADO,archivo);
+        await borrarFotoPendiente(f.id);
+        guardar();
+      }
     }catch(e){ /* todavía sin señal — se reintenta en la próxima vuelta */ }
   }
 }
@@ -1229,13 +1260,13 @@ async function traer(tabla, orden){
 }
 
 async function cargarTodo(){
-  const [cfg, lotes, ani, hist, mov, emp, pla, plin, car, ven, vlin, bit] =
+  const [cfg, lotes, ani, hist, mov, emp, pla, plin, car, ven, vlin, bit, fot] =
     await Promise.all([
       traer('config'), traer('lotes','orden'), traer('animales','arete'),
       traer('animal_hist','fecha'), traer('movimientos','fecha'),
       traer('empleados','nombre'), traer('planillas','periodo'),
       traer('planilla_lineas'), traer('carrito'), traer('ventas','fecha'),
-      traer('venta_lineas'), traer('bitacora','cuando')
+      traer('venta_lineas'), traer('bitacora','cuando'), traer('animal_fotos','fecha')
     ]);
 
   const c = cfg[0] || {};
@@ -1256,6 +1287,12 @@ async function cargarTodo(){
   hist.forEach(h => (porAnimal[h.animal_id] = porAnimal[h.animal_id] || [])
     .push({ id:h.id, f:h.fecha, t:h.texto, tipo:h.tipo, usr:h.usr||'' }));
   D.ani.forEach(a => { a.hist = porAnimal[a.id] || []; });
+
+  /* fotos dentro de cada animal (identificación o para documentar un problema) */
+  const porAnimalFoto = {};
+  fot.forEach(f => (porAnimalFoto[f.animal_id] = porAnimalFoto[f.animal_id] || [])
+    .push({ id:f.id, fecha:f.fecha, caption:f.caption||'', ruta:f.ruta||'', usr:f.usr||'' }));
+  D.ani.forEach(a => { a.fotos = porAnimalFoto[a.id] || []; });
 
   /* planillas con sus líneas */
   const porPlanilla = {};
@@ -1337,6 +1374,15 @@ async function sincronizar(){
     id:h.id, animal_id:h._p, fecha:h.f, tipo:h.tipo||'evento',
     texto:h.t, usr:h.usr||'' })));
   await borrar('animal_hist', dh.borrar);
+
+  /* --- fotos por animal --- */
+  const fotAntes = aplanar(FOTO.ani,'fotos',(a,f)=>({...f, _p:a.id}));
+  const fotAhora = aplanar(D.ani,   'fotos',(a,f)=>({...f, _p:a.id}));
+  const df = diferencia(fotAntes, fotAhora);
+  await subir('animal_fotos', df.subir.map(f=>({
+    id:f.id, animal_id:f._p, fecha:f.fecha, caption:f.caption||'',
+    ruta:f.ruta||null, usr:f.usr||'' })));
+  await borrar('animal_fotos', df.borrar);
 
   /* --- planillas y sus líneas --- */
   const dp = diferencia(
@@ -1955,10 +2001,10 @@ document.getElementById('fMov').addEventListener('submit',async e=>{
     if(archivo.size>8*1024*1024)return alert('La foto pesa más de 8 MB. Probá con una más liviana.');
     /* primero queda a salvo en este aparato — así, aunque no haya señal
        ahorita, la foto NUNCA se pierde */
-    try{ await guardarFotoPendiente(m.id, archivo); }catch(err){ console.error(err); }
+    try{ await guardarFotoPendiente(m.id,'mov',archivo); }catch(err){ console.error(err); }
     const btn=e.target.querySelector('button[type=submit]');
     if(btn){btn.disabled=true;btn.textContent='Subiendo foto...';}
-    try{ m.factura=await subirFoto(archivo); await borrarFotoPendiente(m.id); }
+    try{ m.factura=await subirFoto(BUCKET_FACTURAS,archivo); await borrarFotoPendiente(m.id); }
     catch(err){ /* sin señal: la foto ya quedó guardada en este aparato y se sube sola después */ }
     if(btn){btn.disabled=false;btn.textContent='Agregar';}
   }
@@ -1982,7 +2028,7 @@ function borrarMov(id){
   apuntarBitacora('Borró un movimiento',
     `${fecha(m.fecha)} · ${m.tipo} · ${m.cat} · C$ ${nf(m.monto)}${m.desc?' — '+m.desc:''}`);
   guardar();pintar();
-  if(m.factura)borrarFoto(m.factura);
+  if(m.factura)borrarFoto(BUCKET_FACTURAS,m.factura);
   borrarFotoPendiente(id).catch(()=>{});
 }
 function tablaDiario(){
@@ -2323,8 +2369,8 @@ async function guardarMov(){
   if(archivo){
     if(!archivo.type||!archivo.type.startsWith('image/'))return errEdit('Ese archivo no es una imagen.');
     if(archivo.size>8*1024*1024)return errEdit('La foto pesa más de 8 MB. Probá con una más liviana.');
-    try{ await guardarFotoPendiente(m.id, archivo); }catch(err){ console.error(err); }
-    try{ const nueva=await subirFoto(archivo); fotoVieja=m.factura||null; m.factura=nueva;
+    try{ await guardarFotoPendiente(m.id,'mov',archivo); }catch(err){ console.error(err); }
+    try{ const nueva=await subirFoto(BUCKET_FACTURAS,archivo); fotoVieja=m.factura||null; m.factura=nueva;
       await borrarFotoPendiente(m.id); }
     catch(err){ /* sin señal: queda pendiente en este aparato y se sube sola después */ }
   }
@@ -2335,7 +2381,7 @@ async function guardarMov(){
   D.planillas.forEach(p=>p.lineas.forEach(l=>{
     if(l.movId===m.id){l.monto=monto;l.fechaPago=f;}}));
   guardar();cerrarEditar();pintar();
-  if(fotoVieja)borrarFoto(fotoVieja);
+  if(fotoVieja)borrarFoto(BUCKET_FACTURAS,fotoVieja);
 }
 
 function guardarEdicion(){
@@ -2469,6 +2515,31 @@ function pintarFicha(){
       ${hijos.length?dato('Crías registradas',hijos.map(h=>esc(h.arete)).join(', ')):''}
     </tbody></table></div>
 
+    <h3 class="sec">Fotos</h3>
+    <p class="ayuda">Para identificar al animal, o para documentar un problema o condición
+      (ej. una lesión, una vacuna aplicada). Se ven tocando "Ver foto".</p>
+    <div class="frm" style="margin-bottom:12px">
+      <div class="campo" style="grid-column:span 2"><label>Descripción (opcional)</label>
+        <input type="text" id="fotoAniCaption" placeholder="ej. mastitis en cuarto trasero izquierdo"></div>
+      <div class="campo">
+        <button type="button" class="b gris" style="width:auto;padding:9px 16px"
+          onclick="document.getElementById('fotoAniInput').click()">📷 Agregar foto</button>
+        <input type="file" id="fotoAniInput" accept="image/*" capture="environment" style="display:none"
+          onchange="agregarFotoAnimal()">
+      </div>
+    </div>
+    ${a.fotos&&a.fotos.length?`<div class="tabla-cont"><table><thead><tr><th>Fecha</th>
+      <th>Descripción</th><th>Subió</th><th></th></tr></thead><tbody>`+
+      a.fotos.slice().reverse().map(f=>`<tr>
+        <td>${fecha(f.fecha)}</td>
+        <td style="white-space:normal">${esc(f.caption)||'<span style="color:#aaa">—</span>'}</td>
+        <td style="color:#6b7268">${esc(f.usr)||'—'}</td>
+        <td><button class="mini" onclick="verFotoAnimal('${a.id}','${f.id}')"
+              ${f.ruta?'':'disabled title="Subiendo…"'}>Ver foto</button>
+            <button class="mini x" onclick="borrarFotoAnimal('${a.id}','${f.id}')">Borrar</button></td>
+      </tr>`).join('')+`</tbody></table></div>`
+      :'<p class="vacio">Todavía no hay fotos de este animal.</p>'}
+
     <h3 class="sec">Descendencia</h3>
     <p class="ayuda">Solo por línea materna. Los toros andan con el hato, así que el padre
       no se anota — sería un dato inventado.</p>
@@ -2507,6 +2578,43 @@ function borrarNota(idNota){
   if(!confirm('¿Borrar esta nota?'))return;
   a.hist=(a.hist||[]).filter(h=>h.id!==idNota);
   guardar();pintarFicha();
+}
+
+/* ---------------- fotos del animal ----------------
+   Sirve para identificar al animal o para documentar un problema/
+   condición. Funciona igual que la foto de factura: se guarda primero
+   en este aparato (por si no hay señal) y se sube sola después. */
+async function agregarFotoAnimal(){
+  const a=D.ani.find(x=>x.id===FICHA_ID);if(!a)return;
+  const input=document.getElementById('fotoAniInput');
+  const archivo=input.files[0];if(!archivo)return;
+  if(!archivo.type||!archivo.type.startsWith('image/')){
+    alert('Ese archivo no es una imagen.');input.value='';return;}
+  if(archivo.size>8*1024*1024){
+    alert('La foto pesa más de 8 MB. Probá con una más liviana.');input.value='';return;}
+  const caption=document.getElementById('fotoAniCaption').value.trim();
+  const f={id:uid(),fecha:hoyISO(),caption:caption,ruta:null,usr:(USR&&USR.u)||''};
+  if(!Array.isArray(a.fotos))a.fotos=[];
+  a.fotos.push(f);
+  pintarFicha();   // se ve de una vez en la lista, aunque diga "Subiendo…"
+
+  try{ await guardarFotoPendiente(f.id,'animalFoto',archivo); }catch(err){ console.error(err); }
+  try{ f.ruta=await subirFoto(BUCKET_GANADO,archivo); await borrarFotoPendiente(f.id); }
+  catch(err){ /* sin señal: la foto ya quedó guardada en este aparato y se sube sola después */ }
+
+  guardar();
+  input.value='';document.getElementById('fotoAniCaption').value='';
+  if(FICHA_ID===a.id)pintarFicha();
+}
+function borrarFotoAnimal(animalId,fotoId){
+  const a=D.ani.find(x=>x.id===animalId);if(!a)return;
+  const f=(a.fotos||[]).find(x=>x.id===fotoId);if(!f)return;
+  if(!confirm('¿Borrar esta foto?'))return;
+  a.fotos=a.fotos.filter(x=>x.id!==fotoId);
+  guardar();
+  if(f.ruta)borrarFoto(BUCKET_GANADO,f.ruta);
+  borrarFotoPendiente(fotoId).catch(()=>{});
+  if(FICHA_ID===animalId)pintarFicha();
 }
 
 /* ---------------- reproducción: monta y parto ---------------- */
