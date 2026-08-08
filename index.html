@@ -356,6 +356,7 @@ footer a{color:var(--verde)}
       <form id="fAni">
         <div class="frm">
           <div class="campo"><label>Arete / ID</label><input type="text" id="aArete" placeholder="A-001" required></div>
+          <div class="campo"><label>Lote de manejo</label><select id="aLote"></select></div>
           <div class="campo"><label>Nombre (opcional)</label><input type="text" id="aNombre" placeholder="Lucera"></div>
           <div class="campo"><label>Sexo</label><select id="aSexo"><option value="H">Hembra</option><option value="M">Macho</option></select></div>
           <div class="campo"><label>Raza</label>
@@ -367,11 +368,8 @@ footer a{color:var(--verde)}
               <option>Criollo</option><option>Brahman × Pardo</option><option>Encaste</option>
             </datalist></div>
           <div class="campo"><label>Fecha de nacimiento</label><input type="date" id="aFnac"></div>
-          <div class="campo"><label>Edad aproximada (años, si no hay fecha)</label>
-            <input type="number" id="aEdadAprox" min="0" step="0.5" placeholder="ej. 0.5 = 6 meses, 2 = 2 años">
-            <p class="ayuda" style="margin:4px 0 0">Sirve para cualquier animal, no solo vacas paridas —
-              para la carga inicial, cuando no se sabe la fecha exacta. Admite decimales para crías.</p></div>
-          <div class="campo"><label>Lote de manejo</label><select id="aLote"></select></div>
+          <div class="campo"><label>Edad aproximada (si no hay fecha)</label>
+            <input type="number" id="aEdadAprox" min="0" step="0.5" placeholder="ej. 0.5 = 6 meses"></div>
           <div class="campo"><label>Madre (arete)</label>
             <input type="text" id="aMadre" list="listaMadres" placeholder="elegí de la lista"></div>
           <datalist id="listaMadres"></datalist>
