@@ -367,6 +367,10 @@ footer a{color:var(--verde)}
               <option>Criollo</option><option>Brahman × Pardo</option><option>Encaste</option>
             </datalist></div>
           <div class="campo"><label>Fecha de nacimiento</label><input type="date" id="aFnac"></div>
+          <div class="campo"><label>Edad aproximada (años, si no hay fecha)</label>
+            <input type="number" id="aEdadAprox" min="0" step="0.5" placeholder="ej. 0.5 = 6 meses, 2 = 2 años">
+            <p class="ayuda" style="margin:4px 0 0">Sirve para cualquier animal, no solo vacas paridas —
+              para la carga inicial, cuando no se sabe la fecha exacta. Admite decimales para crías.</p></div>
           <div class="campo"><label>Lote de manejo</label><select id="aLote"></select></div>
           <div class="campo"><label>Madre (arete)</label>
             <input type="text" id="aMadre" list="listaMadres" placeholder="elegí de la lista"></div>
@@ -377,8 +381,6 @@ footer a{color:var(--verde)}
             <input type="number" id="aLitros" min="0" step="0.1" value="0"></div>
           <div class="campo" id="cCC" style="display:none"><label>Condición corporal (CC, 1–9)</label>
             <input type="number" id="aCC" min="1" max="9" step="1" placeholder="1–9"></div>
-          <div class="campo" id="cEdadAprox" style="display:none"><label>Edad aproximada (años)</label>
-            <input type="number" id="aEdadAprox" min="0" step="1" placeholder="solo si no hay fecha de nacimiento"></div>
           <div class="campo" id="cTempVacia" style="display:none"><label>Temporadas vacía seguidas</label>
             <input type="number" id="aTempVacia" min="0" step="1" value="0"></div>
           <div class="campo" id="cProblemaSalud" style="display:none"><label>Problema de salud</label>
@@ -1517,8 +1519,8 @@ function etapa(a){
     const base=(MANEJOS.find(m=>m.v===a.manejo)||MANEJOS[1]).e;
     return prena?base+' y preñada':base;
   }
-  const e=mesesDesde(a.fnac);
-  if(e===null)return 'Falta fecha de nacimiento';
+  const e=edadMesesAprox(a);
+  if(e===null)return 'Falta fecha de nacimiento o edad aproximada';
   const H=a.sexo==='H';
   /* mamando */
   if(e<(+D.config.destete))return H?'Ternera':'Ternero';
@@ -1582,10 +1584,19 @@ const PROBLEMA_SALUD_LABEL={ubre:'Problema de ubre',patas:'Problema de patas',cr
 
 /* edad en años: exacta si hay fecha de nacimiento; si no, la aproximada
    a ojo que se anotó a mano. null si no hay ninguna de las dos. */
-function edadAnios(a){
+/* edad en MESES: exacta si hay fecha de nacimiento; si no, la
+   aproximada a ojo (en años, admite decimales — 0.5 = 6 meses — para
+   poder estimar crías y vaquillas, no solo vacas paridas). Sirve para
+   CUALQUIER animal, no solo vacas: en la carga inicial de la finca
+   casi nunca se sabe la fecha exacta de nacimiento de nadie. */
+function edadMesesAprox(a){
   const m=mesesDesde(a.fnac);
-  if(m!==null)return Math.floor(m/12);
-  return (a.edadAprox!=null&&a.edadAprox!=='')?+a.edadAprox:null;
+  if(m!==null)return m;
+  return (a.edadAprox!=null&&a.edadAprox!=='')?Math.round(+a.edadAprox*12):null;
+}
+function edadAnios(a){
+  const m=edadMesesAprox(a);
+  return m===null?null:Math.floor(m/12);
 }
 function clasificarVaca(a){
   if((+a.partos||0)<1||a.sexo!=='H')return null;   // el esquema es solo para vacas que ya parieron
@@ -2091,7 +2102,7 @@ function ajustarFormAnimal(){
   document.getElementById('cManejo').style.display=esVaca?'':'none';
   document.getElementById('cLitros').style.display=
     (esVaca&&document.getElementById('aManejo').value==='ordeno')?'':'none';
-  ['cCC','cEdadAprox','cTempVacia','cProblemaSalud'].forEach(id=>
+  ['cCC','cTempVacia','cProblemaSalud'].forEach(id=>
     document.getElementById(id).style.display=esVaca?'':'none');
   if(m){document.getElementById('aPrenada').value='';document.getElementById('cServicio').style.display='none';}
 }
@@ -2200,8 +2211,9 @@ function editarAnimal(id){
         <input type="number" id="edLitros" min="0" step="0.1" value="${+a.litros||0}"></div>
       <div class="campo"><label>CC — condición corporal (1–9, solo vacas)</label>
         <input type="number" id="edCC" min="1" max="9" step="1" value="${a.cc==null?'':a.cc}"></div>
-      <div class="campo"><label>Edad aproximada (años, solo si no hay fecha de nacimiento)</label>
-        <input type="number" id="edEdadAprox" min="0" step="1" value="${a.edadAprox==null?'':a.edadAprox}"></div>
+      <div class="campo"><label>Edad aproximada (años, si no hay fecha de nacimiento — cualquier animal)</label>
+        <input type="number" id="edEdadAprox" min="0" step="0.5" placeholder="ej. 0.5 = 6 meses"
+          value="${a.edadAprox==null?'':a.edadAprox}"></div>
       <div class="campo"><label>Temporadas vacía seguidas (solo vacas)</label>
         <input type="number" id="edTempVacia" min="0" step="1" value="${+a.temporadasVacia||0}"></div>
       <div class="campo"><label>Problema de salud (solo vacas)</label><select id="edProblemaSalud">
@@ -2485,7 +2497,7 @@ function pintarDescendencia(a){
 function pintarFicha(){
   const a=D.ani.find(x=>x.id===FICHA_ID);
   if(!a)return cerrarFicha();
-  const e=mesesDesde(a.fnac), ac=a.estado==='Activa';
+  const e=edadMesesAprox(a), ac=a.estado==='Activa';
   const hijos=D.ani.filter(x=>x.madre&&a.arete&&x.madre.toLowerCase()===a.arete.toLowerCase());
   const dp=diasParaParto(a);
   /* historial escrito + hitos calculados de la fecha de nacimiento */
@@ -2506,8 +2518,9 @@ function pintarFicha(){
       ${dato('Sexo',a.sexo==='H'?'Hembra':'Macho')}
       ${dato('Raza',esc(a.raza)||'sin anotar')}
       ${dato('Nacimiento',fecha(a.fnac)||'sin fecha')}
-      ${dato('Edad',e!==null?(e>=24?Math.floor(e/12)+' años '+(e%12)+' meses':e+' meses')
-        :(a.edadAprox!=null&&a.edadAprox!==''?'≈ '+a.edadAprox+' años (aproximada)':'—'))}
+      ${dato('Edad',e===null?'—':
+        (e>=24?Math.floor(e/12)+' años '+(e%12)+' meses':e+' meses')
+        +(a.fnac?'':' (aproximada)'))}
       ${dato('Madre',esc(a.madre)||'sin anotar')}
       ${dato('Lote',esc(nomLote(a.lote))||'sin lote')}
       ${(+a.partos||0)>=1?dato('Partos',a.partos):''}
@@ -2857,7 +2870,7 @@ function tablaHato(){
     <th>Lote</th><th class="num">Partos</th><th class="num">Litros/día</th><th class="num">Valor C$</th>
     <th>Madre</th><th></th></tr></thead><tbody>`+
     l.map(a=>{
-      const e=mesesDesde(a.fnac),et=etapa(a),ac=a.estado==='Activa';
+      const e=edadMesesAprox(a),et=etapa(a),ac=a.estado==='Activa';
       const dp=diasParaParto(a);
       let repro='—';
       if(a.prenada){
@@ -2871,7 +2884,7 @@ function tablaHato(){
         <td>${esc(a.nombre)||'—'}</td><td>${a.sexo==='H'?'Hembra':'Macho'}</td>
         <td><button class="mini" onclick="cambiarRaza('${a.id}')">${esc(a.raza)||'sin raza'}</button></td>
         <td>${fecha(a.fnac)||'—'}</td>
-        <td class="num">${e===null?'—':(e>=24?Math.floor(e/12)+' a '+(e%12)+' m':e+' m')}</td>
+        <td class="num">${e===null?'—':(a.fnac?'':'≈ ')+(e>=24?Math.floor(e/12)+' a '+(e%12)+' m':e+' m')}</td>
         <td>${!ac?`<span class="pill inact">${esc(et)}</span>`
              :(a.sexo==='M'&&et!=='Ternero'&&et!=='Ternero destetado')
               ?`<button class="mini" onclick="cambiarDestino('${a.id}')">${esc(et)}</button>`
