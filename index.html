@@ -178,6 +178,17 @@ footer a{color:var(--verde)}
   </div>
 </div>
 
+<!-- ==================== FOTO DE FACTURA ==================== -->
+<div id="modalFoto" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);
+     z-index:96;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)cerrarFoto()">
+  <div style="background:#fff;border-radius:12px;padding:14px;max-width:min(640px,96vw);width:100%;margin:auto;max-height:92vh;display:flex;flex-direction:column">
+    <div id="fotoCuerpo" style="overflow:auto;flex:1;min-height:0;text-align:center"></div>
+    <div class="acciones" style="margin-top:12px">
+      <button class="b gris" style="width:100%" onclick="cerrarFoto()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ==================== FICHA DEL ANIMAL ==================== -->
 <div id="modalFicha" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);
      z-index:92;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto">
@@ -1094,13 +1105,25 @@ async function borrarFoto(ruta){
   if(!ruta)return;
   try{await SB.storage.from(BUCKET_FACTURAS).remove([ruta]);}catch(_){}
 }
+/* la foto se ve DENTRO de la app, en una ventanita — antes se abría en
+   pestaña nueva con window.open(), pero como eso pasa después de un
+   await (pedirle el link firmado a Supabase), el celular ya no lo
+   reconoce como "el usuario tocó un botón" y en vez de pestaña nueva
+   saca a la persona de la app entera. Mostrándola adentro no hay ese
+   problema y además nunca hay que salir para volver a ver el Diario. */
 async function verFactura(id){
   const m=D.mov.find(x=>x.id===id);
   if(!m||!m.factura)return;
+  const cont=document.getElementById('fotoCuerpo');
+  cont.innerHTML='<p class="vacio">Abriendo la foto…</p>';
+  document.getElementById('modalFoto').style.display='flex';
   const {data,error}=await SB.storage.from(BUCKET_FACTURAS).createSignedUrl(m.factura,60);
-  if(error)return alert('No se pudo abrir la foto: '+error.message);
-  window.open(data.signedUrl,'_blank');
+  if(error){ cont.innerHTML=`<p class="vacio">No se pudo abrir la foto: ${esc(error.message)}</p>`; return; }
+  cont.innerHTML=`<img src="${esc(data.signedUrl)}" alt="Factura"
+    style="max-width:100%;max-height:78vh;border-radius:8px;display:block;margin:0 auto">`;
 }
+function cerrarFoto(){ document.getElementById('modalFoto').style.display='none';
+  document.getElementById('fotoCuerpo').innerHTML=''; }
 
 /* ---------- cola de fotos pendientes (IndexedDB) ----------
    Si no hay señal justo cuando se anota el egreso, la foto de la factura
