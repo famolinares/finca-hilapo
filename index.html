@@ -932,17 +932,55 @@ const razas=()=>[...new Set(D.ani.map(a=>(a.raza||'').trim()).filter(Boolean))]
 
 /* guardado en cola para que dos cambios seguidos no se pisen */
 let cola=Promise.resolve();
+let sinConexion=false;
+let tReintento=null;
+/* mensajes de red vs. errores de verdad: uno se arregla solo cuando
+   vuelva la se\u00f1al, el otro necesita que alguien lo vea */
+function pareceFallaDeRed(e){
+  return !navigator.onLine || /fetch|network|conexi[o\u00f3]n/i.test((e&&e.message)||'');
+}
 function guardar(){
   cola=cola.then(async()=>{
     if(!USR)return;
+    guardarLocal();               // primero queda a salvo en este aparato
     await sincronizar();
+    guardarLocal();
+    if(sinConexion){ sinConexion=false; detenerReintentos(); }
+    if(typeof pintarEstadoNube==='function')pintarEstadoNube();
     aviso('Guardado en la nube \u2713');
-  }).catch(e=>{aviso('NO SE GUARD\u00d3 \u2014 revis\u00e1 el internet');console.error(e);
-    alert('No se pudo guardar en la nube.\n\n'+e.message+
-      '\n\nRevis\u00e1 la conexi\u00f3n a internet y volv\u00e9 a intentar. '+
-      'Lo que est\u00e1 en pantalla todav\u00eda no est\u00e1 guardado.');});
+  }).catch(e=>{
+    console.error(e);
+    guardarLocal();
+    sinConexion=true;
+    if(typeof pintarEstadoNube==='function')pintarEstadoNube();
+    iniciarReintentos();
+    if(pareceFallaDeRed(e)){
+      aviso('Sin conexi\u00f3n \u2014 guardado en este aparato');
+    }else{
+      aviso('NO SE GUARD\u00d3 \u2014 revis\u00e1 el error');
+      alert('No se pudo guardar en la nube.\n\n'+e.message+
+        '\n\nLo que est\u00e1 en pantalla se guard\u00f3 en este aparato y se va a reintentar solo. '+
+        'Si el error sigue, avisale a Fausto.');
+    }
+  });
   return cola;
 }
+function iniciarReintentos(){
+  if(tReintento)return;
+  tReintento=setInterval(()=>{
+    if(!USR)return;
+    guardar();
+    reintentarFotosPendientes();
+  }, 25000);
+}
+function detenerReintentos(){
+  if(tReintento){ clearInterval(tReintento); tReintento=null; }
+}
+window.addEventListener('online', ()=>{
+  if(!USR)return;
+  guardar();
+  reintentarFotosPendientes();
+});
 /* ================================================================
    MOTOR DE SINCRONIZACIÓN
    Toda la app sigue trabajando contra el objeto D en memoria, igual
@@ -953,6 +991,28 @@ function guardar(){
    ================================================================ */
 let FOTO = null;          // última foto confirmada por la base de datos
 const clonar = o => JSON.parse(JSON.stringify(o));
+
+/* ================================================================
+   COPIA LOCAL (para el campo, sin señal)
+   Además de vivir en la nube, cada guardado deja una copia en este
+   aparato. Si Norvin anda donde no hay señal y anota algo, o cierra
+   la app, no se pierde: al volver a abrirla se recupera de acá y se
+   termina de subir sola en cuanto regrese la conexión.
+   ================================================================ */
+const LOCAL_KEY='fh_local_v1';
+function guardarLocal(){
+  if(!USR)return;
+  try{
+    localStorage.setItem(LOCAL_KEY, JSON.stringify({
+      guardadoEn:new Date().toISOString(), usrId:USR.id, USR, D, FOTO }));
+  }catch(e){ console.error('No se pudo hacer la copia local', e); }
+}
+function cargarLocal(){
+  try{ const t=localStorage.getItem(LOCAL_KEY); return t?JSON.parse(t):null; }
+  catch(e){ console.error('Copia local dañada', e); return null; }
+}
+/* ¿hay algo anotado en pantalla que todavía no llegó a la base de datos? */
+function hayPendientes(){ return !!FOTO && JSON.stringify(FOTO)!==JSON.stringify(D); }
 
 /* --- traducción entre los nombres de la app y los de la base --- */
 const oNull = v => (v === '' || v === undefined) ? null : v;
@@ -1040,6 +1100,65 @@ async function verFactura(id){
   const {data,error}=await SB.storage.from(BUCKET_FACTURAS).createSignedUrl(m.factura,60);
   if(error)return alert('No se pudo abrir la foto: '+error.message);
   window.open(data.signedUrl,'_blank');
+}
+
+/* ---------- cola de fotos pendientes (IndexedDB) ----------
+   Si no hay señal justo cuando se anota el egreso, la foto de la factura
+   NO se pierde: se guarda en este aparato (IndexedDB, aguanta imágenes,
+   a diferencia de localStorage) y se sube sola en cuanto vuelva la señal. */
+const FOTOS_DB='fh_fotos', FOTOS_STORE='pendientes';
+function abrirFotosDB(){
+  return new Promise((resolve,reject)=>{
+    if(!window.indexedDB)return reject(new Error('Este navegador no soporta guardar fotos sin conexión.'));
+    const req=indexedDB.open(FOTOS_DB,1);
+    req.onupgradeneeded=()=>{ req.result.createObjectStore(FOTOS_STORE,{keyPath:'movId'}); };
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error);
+  });
+}
+async function guardarFotoPendiente(movId,archivo){
+  const db=await abrirFotosDB();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(FOTOS_STORE,'readwrite');
+    tx.objectStore(FOTOS_STORE).put({movId,blob:archivo,tipo:archivo.type,
+      nombre:archivo.name||'factura.jpg',creado:Date.now()});
+    tx.oncomplete=()=>resolve();
+    tx.onerror=()=>reject(tx.error);
+  });
+}
+async function borrarFotoPendiente(movId){
+  const db=await abrirFotosDB();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(FOTOS_STORE,'readwrite');
+    tx.objectStore(FOTOS_STORE).delete(movId);
+    tx.oncomplete=()=>resolve();
+    tx.onerror=()=>reject(tx.error);
+  });
+}
+async function fotosPendientes(){
+  const db=await abrirFotosDB();
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(FOTOS_STORE,'readonly');
+    const req=tx.objectStore(FOTOS_STORE).getAll();
+    req.onsuccess=()=>resolve(req.result||[]);
+    req.onerror=()=>reject(req.error);
+  });
+}
+/* se llama sola cada vez que vuelve la señal (evento 'online' y cada 25s
+   mientras estemos sin conexión) — no hace falta que nadie la dispare a mano */
+async function reintentarFotosPendientes(){
+  let lista=[];
+  try{ lista=await fotosPendientes(); }catch(e){ return; }
+  for(const f of lista){
+    const m=D.mov.find(x=>x.id===f.movId);
+    if(!m||m.factura){ borrarFotoPendiente(f.movId).catch(()=>{}); continue; }
+    try{
+      const archivo=new File([f.blob], f.nombre, {type:f.tipo||'image/jpeg'});
+      m.factura=await subirFoto(archivo);
+      await borrarFotoPendiente(f.movId);
+      guardar();
+    }catch(e){ /* todavía sin señal — se reintenta en la próxima vuelta */ }
+  }
 }
 
 /* ------------------------- LECTURA ------------------------- */
@@ -1388,18 +1507,35 @@ async function entrar(){
   }
 }
 
-/* con la sesión ya abierta: buscar quién es y traer la finca */
+/* con la sesión ya abierta: buscar quién es y traer la finca.
+   Si no hay señal pero este mismo aparato ya había entrado antes,
+   seguimos con la última copia guardada en vez de trabarnos —
+   así se puede abrir la app en el campo aunque no haya internet. */
 async function sesionAdentro(user){
-  const { data:perfil, error } = await SB.from('perfiles')
-    .select('usuario,nombre,rol').eq('id', user.id).maybeSingle();
-  if(error) throw new Error('No se pudo leer tu perfil: '+error.message);
-  if(!perfil) throw new Error(
-    'Tu cuenta existe pero todavía no tiene permiso sobre la finca.\n'+
-    'Pedile a Fausto que te dé acceso.');
-  USR = { u:perfil.usuario, nombre:perfil.nombre||perfil.usuario,
-          rol:ROL_APP(perfil.rol), correo:user.email, id:user.id };
-  await cargarTodo();
-  await abrirApp();
+  try{
+    const { data:perfil, error } = await SB.from('perfiles')
+      .select('usuario,nombre,rol').eq('id', user.id).maybeSingle();
+    if(error) throw new Error(error.message);
+    if(!perfil) throw new Error(
+      'Tu cuenta existe pero todavía no tiene permiso sobre la finca.\n'+
+      'Pedile a Fausto que te dé acceso.');
+    USR = { u:perfil.usuario, nombre:perfil.nombre||perfil.usuario,
+            rol:ROL_APP(perfil.rol), correo:user.email, id:user.id };
+    await cargarTodo();
+    guardarLocal();
+    await abrirApp();
+  }catch(e){
+    const local=cargarLocal();
+    if(pareceFallaDeRed(e) && local && local.usrId===user.id){
+      USR=local.USR; D=local.D; FOTO=local.FOTO;
+      sinConexion=true;
+      await abrirApp();
+      iniciarReintentos();
+      reintentarFotosPendientes();
+      return;
+    }
+    throw e;
+  }
 }
 
 /* ¿ya había sesión abierta de antes? entonces no pedir contraseña */
@@ -1495,6 +1631,7 @@ async function abrirApp(){
   llenarCatForm();pintarConfig();mostrarCamposPeriodo();pintar();ajustarFormAnimal();
   pintarEstadoNube();
   reiniciarInactividad();
+  reintentarFotosPendientes();   // por si quedó una foto sin subir de la última vez
 }
 
 async function salir(){
@@ -1507,10 +1644,18 @@ async function salir(){
   document.getElementById('loU').focus();
 }
 
-/* aviso permanente de dónde vive la información */
+/* aviso permanente de dónde vive la información + si hay algo sin subir */
 function pintarEstadoNube(){
   const b=document.getElementById('bannerRespaldo'); if(!b)return;
-  b.innerHTML=`<div style="text-align:right;margin:0 0 8px">
+  let av='';
+  if(sinConexion){
+    av=`<div class="aviso rojo" style="margin-bottom:8px">
+      <strong>Sin conexión.</strong> Lo que anotés se guarda en este aparato y se sube solo
+      en cuanto vuelva la señal. Podés seguir trabajando normal.</div>`;
+  }else if(hayPendientes()){
+    av=`<div class="aviso" style="margin-bottom:8px">Subiendo lo último a la nube…</div>`;
+  }
+  b.innerHTML=av+`<div style="text-align:right;margin:0 0 8px">
     <button class="b gris" style="padding:5px 14px;font-size:13px"
       onclick="refrescar()" title="Trae lo que los demás hayan anotado">Traer lo último</button></div>`;
 }
@@ -1677,10 +1822,15 @@ document.getElementById('fMov').addEventListener('submit',async e=>{
   const fotoInput=document.getElementById('mFoto');
   const archivo=fotoInput.files[0];
   if(archivo){
+    if(!archivo.type||!archivo.type.startsWith('image/'))return alert('Ese archivo no es una imagen.');
+    if(archivo.size>8*1024*1024)return alert('La foto pesa más de 8 MB. Probá con una más liviana.');
+    /* primero queda a salvo en este aparato — así, aunque no haya señal
+       ahorita, la foto NUNCA se pierde */
+    try{ await guardarFotoPendiente(m.id, archivo); }catch(err){ console.error(err); }
     const btn=e.target.querySelector('button[type=submit]');
     if(btn){btn.disabled=true;btn.textContent='Subiendo foto...';}
-    try{ m.factura=await subirFoto(archivo); }
-    catch(err){ alert('El movimiento se va a guardar, pero la foto no se pudo subir:\n\n'+err.message); }
+    try{ m.factura=await subirFoto(archivo); await borrarFotoPendiente(m.id); }
+    catch(err){ /* sin señal: la foto ya quedó guardada en este aparato y se sube sola después */ }
     if(btn){btn.disabled=false;btn.textContent='Agregar';}
   }
   D.mov.push(m);
@@ -1703,6 +1853,7 @@ function borrarMov(id){
     `${fecha(m.fecha)} · ${m.tipo} · ${m.cat} · C$ ${nf(m.monto)}${m.desc?' — '+m.desc:''}`);
   guardar();pintar();
   if(m.factura)borrarFoto(m.factura);
+  borrarFotoPendiente(id).catch(()=>{});
 }
 function tablaDiario(){
   const mes=document.getElementById('fMes').value,anio=document.getElementById('fAnio').value,
@@ -2017,10 +2168,12 @@ async function guardarMov(){
   const archivo=fotoInput&&fotoInput.files[0];
   let fotoVieja=null;
   if(archivo){
-    let nueva;
-    try{ nueva=await subirFoto(archivo); }
-    catch(err){ return errEdit(err.message); }
-    fotoVieja=m.factura||null; m.factura=nueva;
+    if(!archivo.type||!archivo.type.startsWith('image/'))return errEdit('Ese archivo no es una imagen.');
+    if(archivo.size>8*1024*1024)return errEdit('La foto pesa más de 8 MB. Probá con una más liviana.');
+    try{ await guardarFotoPendiente(m.id, archivo); }catch(err){ console.error(err); }
+    try{ const nueva=await subirFoto(archivo); fotoVieja=m.factura||null; m.factura=nueva;
+      await borrarFotoPendiente(m.id); }
+    catch(err){ /* sin señal: queda pendiente en este aparato y se sube sola después */ }
   }
   m.fecha=f;m.tipo=v('edMTipo');m.cat=v('edMCat');m.desc=v('edMDesc').trim();m.monto=monto;
   if(isFinite(li)&&li>0){m.litros=li;}else{delete m.litros;}
@@ -3951,6 +4104,13 @@ document.getElementById('rTipo').addEventListener('change',()=>{mostrarCamposPer
   if(el)el.addEventListener('keydown',e=>{if(e.key==='Enter')entrar();});});
 
 /* ============================ ARRANQUE ============================ */
+/* deja el "cascarón" de la app guardado en el celular, para que abra
+   aunque justo en ese momento no haya señal (ver sw.js) */
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('/sw.js').catch(e=>console.error('Service worker:',e));
+  });
+}
 (async function inicio(){
   document.getElementById('acceso').style.display='flex';
   await arranque();
