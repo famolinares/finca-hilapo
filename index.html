@@ -308,8 +308,12 @@ footer a{color:var(--verde)}
             <input type="text" id="mDesc" placeholder="ej. venta de leche del día, 45 litros"></div>
           <div class="campo" id="cmFoto" style="display:none;grid-column:span 2">
             <label>Foto de la factura o recibo (opcional)</label>
-            <input type="file" id="mFoto" accept="image/*" capture="environment">
-            <p class="ayuda" style="margin:4px 0 0">Tomale foto con el celular o elegí una imagen. Máximo 8 MB.</p>
+            <button type="button" class="b gris" style="width:auto;padding:9px 16px"
+              onclick="document.getElementById('mFoto').click()">📷 Tomar foto</button>
+            <span id="mFotoNombre" style="margin-left:8px;font-size:13px;color:#6b7268"></span>
+            <input type="file" id="mFoto" accept="image/*" capture="environment" style="display:none"
+              onchange="mostrarNombreFoto('mFoto','mFotoNombre')">
+            <p class="ayuda" style="margin:4px 0 0">Máximo 8 MB.</p>
           </div>
           <div class="campo"><label id="lblMonto">Monto (C$)</label>
             <input type="number" id="mMonto" step="0.01" min="0" placeholder="0.00" required></div>
@@ -1135,6 +1139,14 @@ async function verFactura(id){
 function cerrarFoto(){ document.getElementById('modalFoto').style.display='none';
   document.getElementById('fotoCuerpo').innerHTML=''; }
 
+/* el input de archivo nativo se deja oculto (style="display:none") y en su
+   lugar se muestra un botón "📷 Tomar foto" — así en el celular aparece el
+   ícono de cámara en vez del clip de "adjuntar archivo" del navegador */
+function mostrarNombreFoto(inputId,outId){
+  const f=document.getElementById(inputId).files[0];
+  document.getElementById(outId).textContent=f?('✓ '+f.name):'';
+}
+
 /* ---------- cola de fotos pendientes (IndexedDB) ----------
    Si no hay señal justo cuando se anota el egreso, la foto de la factura
    NO se pierde: se guarda en este aparato (IndexedDB, aguanta imágenes,
@@ -1870,6 +1882,7 @@ document.getElementById('fMov').addEventListener('submit',async e=>{
   guardar();
   document.getElementById('mDesc').value='';document.getElementById('mMonto').value='';
   document.getElementById('mLitros').value='';fotoInput.value='';
+  document.getElementById('mFotoNombre').textContent='';
   /* el precio se deja puesto: normalmente es el mismo varios días seguidos */
   (leche?document.getElementById('mLitros'):document.getElementById('mMonto')).focus();
   pintar();
@@ -2171,10 +2184,14 @@ function editarMov(id){
       <div class="campo" style="grid-column:span 2">
         <label>Foto de la factura o recibo</label>
         ${m.factura?`<div style="margin-bottom:6px"><button type="button" class="mini" onclick="verFactura('${m.id}')">Ver foto actual</button></div>`:''}
-        <input type="file" id="edMFoto" accept="image/*" capture="environment">
+        <button type="button" class="b gris" style="width:auto;padding:9px 16px"
+          onclick="document.getElementById('edMFoto').click()">📷 ${m.factura?'Tomar foto nueva':'Tomar foto'}</button>
+        <span id="edMFotoNombre" style="margin-left:8px;font-size:13px;color:#6b7268"></span>
+        <input type="file" id="edMFoto" accept="image/*" capture="environment" style="display:none"
+          onchange="mostrarNombreFoto('edMFoto','edMFotoNombre')">
         <p class="ayuda" style="margin:4px 0 0">${m.factura
-          ?'Elegí una imagen nueva para reemplazarla, o dejalo vacío para conservar la que ya está.'
-          :'Opcional. Tomale foto con el celular o elegí una imagen. Máximo 8 MB.'}</p>
+          ?'Máximo 8 MB. Si no elegís una nueva, se conserva la que ya está.'
+          :'Opcional. Máximo 8 MB.'}</p>
       </div>
     </div>
     <p class="ayuda" style="margin-top:8px">Si llenás litros y precio, el monto se recalcula solo.
