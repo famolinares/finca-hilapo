@@ -1260,14 +1260,20 @@ async function traer(tabla, orden){
 }
 
 async function cargarTodo(){
-  const [cfg, lotes, ani, hist, mov, emp, pla, plin, car, ven, vlin, bit, fot] =
+  const [cfg, lotes, ani, hist, mov, emp, pla, plin, car, ven, vlin, bit] =
     await Promise.all([
       traer('config'), traer('lotes','orden'), traer('animales','arete'),
       traer('animal_hist','fecha'), traer('movimientos','fecha'),
       traer('empleados','nombre'), traer('planillas','periodo'),
       traer('planilla_lineas'), traer('carrito'), traer('ventas','fecha'),
-      traer('venta_lineas'), traer('bitacora','cuando'), traer('animal_fotos','fecha')
+      traer('venta_lineas'), traer('bitacora','cuando')
     ]);
+  /* animal_fotos aparte y con su propio try/catch: si esa tabla no
+     existe todavía (o falla por lo que sea) NO tiene que tumbar el
+     login de todo el mundo — sin fotos es mejor que sin app. */
+  let fot=[];
+  try{ fot=await traer('animal_fotos','fecha'); }
+  catch(e){ console.error('No se pudieron leer las fotos del ganado:',e); }
 
   const c = cfg[0] || {};
   D = {
@@ -1375,14 +1381,19 @@ async function sincronizar(){
     texto:h.t, usr:h.usr||'' })));
   await borrar('animal_hist', dh.borrar);
 
-  /* --- fotos por animal --- */
-  const fotAntes = aplanar(FOTO.ani,'fotos',(a,f)=>({...f, _p:a.id}));
-  const fotAhora = aplanar(D.ani,   'fotos',(a,f)=>({...f, _p:a.id}));
-  const df = diferencia(fotAntes, fotAhora);
-  await subir('animal_fotos', df.subir.map(f=>({
-    id:f.id, animal_id:f._p, fecha:f.fecha, caption:f.caption||'',
-    ruta:f.ruta||null, usr:f.usr||'' })));
-  await borrar('animal_fotos', df.borrar);
+  /* --- fotos por animal ---
+     aparte, con su propio try/catch: si esta tabla todavía no existe
+     (o falla), NO tiene que bloquear el guardado de todo lo demás
+     (movimientos, animales, planillas...) — eso sí es plata real. */
+  try{
+    const fotAntes = aplanar(FOTO.ani,'fotos',(a,f)=>({...f, _p:a.id}));
+    const fotAhora = aplanar(D.ani,   'fotos',(a,f)=>({...f, _p:a.id}));
+    const df = diferencia(fotAntes, fotAhora);
+    await subir('animal_fotos', df.subir.map(f=>({
+      id:f.id, animal_id:f._p, fecha:f.fecha, caption:f.caption||'',
+      ruta:f.ruta||null, usr:f.usr||'' })));
+    await borrar('animal_fotos', df.borrar);
+  }catch(e){ console.error('No se pudieron guardar las fotos del ganado:',e); }
 
   /* --- planillas y sus líneas --- */
   const dp = diferencia(
