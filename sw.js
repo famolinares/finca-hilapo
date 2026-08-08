@@ -6,10 +6,16 @@
    a Supabase para leer/guardar datos) sigue yendo directo a internet:
    este archivo NO guarda datos de la finca, solo la página en sí. */
 
-const CACHE = 'fh-cascaron-v1';
+const CACHE = 'fh-cascaron-v2';
 const CASCARON = [
   '/',
   '/index.html',
+  '/manifest.json',
+  '/favicon.png',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/icon-512-maskable.png',
+  '/apple-touch-icon.png',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
 ];
 
@@ -35,14 +41,18 @@ self.addEventListener('activate', (e) => {
   self.clients.claim();
 });
 
+/* las rutas de CASCARON son relativas ("/manifest.json"); las
+   convertimos una sola vez a URLs completas para poder comparar
+   contra req.url (que siempre viene completa) */
+const CASCARON_URLS = CASCARON.map((u) => new URL(u, self.location.origin).href);
+
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return; // nunca tocar guardados/subidas a Supabase
 
   const esCascaron =
     req.mode === 'navigate' ||
-    req.url === self.location.origin + '/' ||
-    req.url.endsWith('/index.html') ||
+    CASCARON_URLS.indexOf(req.url) !== -1 ||
     req.url.indexOf('supabase-js') !== -1;
   if (!esCascaron) return; // todo lo demás (Supabase, fotos, etc.) va directo a la red
 
