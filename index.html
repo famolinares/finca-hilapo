@@ -375,6 +375,16 @@ footer a{color:var(--verde)}
           <div class="campo" id="cManejo"><label>¿Qué se hace con ella?</label><select id="aManejo"></select></div>
           <div class="campo" id="cLitros"><label>Litros por día (al balde)</label>
             <input type="number" id="aLitros" min="0" step="0.1" value="0"></div>
+          <div class="campo" id="cCC" style="display:none"><label>Condición corporal (CC, 1–9)</label>
+            <input type="number" id="aCC" min="1" max="9" step="1" placeholder="1–9"></div>
+          <div class="campo" id="cEdadAprox" style="display:none"><label>Edad aproximada (años)</label>
+            <input type="number" id="aEdadAprox" min="0" step="1" placeholder="solo si no hay fecha de nacimiento"></div>
+          <div class="campo" id="cTempVacia" style="display:none"><label>Temporadas vacía seguidas</label>
+            <input type="number" id="aTempVacia" min="0" step="1" value="0"></div>
+          <div class="campo" id="cProblemaSalud" style="display:none"><label>Problema de salud</label>
+            <select id="aProblemaSalud"><option value="">Ninguno</option>
+              <option value="ubre">Problema de ubre</option><option value="patas">Problema de patas</option>
+              <option value="cronica">Enfermedad crónica</option></select></div>
           <div class="campo" id="cRepro"><label>¿Está preñada?</label>
             <select id="aPrenada"><option value="">No (vacía)</option><option value="1">Sí, preñada</option></select></div>
           <div class="campo" id="cServicio" style="display:none"><label>Fecha de la monta / servicio</label>
@@ -751,15 +761,11 @@ footer a{color:var(--verde)}
       <p class="ayuda" style="margin-top:6px">283 días es el promedio en ganado bovino. Con la fecha de la
         monta, la app calcula sola la fecha probable de parto y avisa cuando faltan 30 días o menos.</p>
 
-      <h3 class="sec">Regla de descarte (“vaca de salida”)</h3>
-      <div class="frm">
-        <div class="campo"><label>N° de partos para revisar</label><input type="number" id="cPartos" min="1" step="1"></div>
-        <div class="campo"><label>Producción mínima (litros/día)</label><input type="number" id="cLitrosMin" min="0" step="0.1"></div>
+      <h3 class="sec">Clasificación de retención / descarte</h3>
+      <div class="aviso">Esto ya no se configura acá: se anota <strong>por vaca</strong> (condición
+        corporal, edad aproximada, temporadas vacía, problema de salud) en su ficha, en el Hato.
+        La app decide sola el código (A1, A2, B1, B2 para quedarse; D1–D4 para salir) con esos datos.
       </div>
-      <p class="ayuda" style="margin-top:6px">La producción mínima se le aplica <strong>solo a las vacas
-        de ordeño</strong> — a una vaca de cría no se le mide por litros, porque no se ordeña. A las de
-        cría y a las secas se las marca cuando ya tienen muchos partos y además quedaron vacías.
-        Una vaca <strong>preñada nunca se marca de salida</strong>: está cargando una cría.</p>
 
       <h3 class="sec">Leche</h3>
       <div class="frm">
@@ -912,6 +918,8 @@ function normalizar(d){
        las que tenían litros pasan a ordeño, las demás quedan secas. */
     if(!MANEJOS.some(m=>m.v===a.manejo))a.manejo=((+a.litros||0)>0)?'ordeno':'seca';
     if(!Array.isArray(a.hist))a.hist=[];
+    if(a.temporadasVacia==null)a.temporadasVacia=0;
+    if(a.problemaSalud==null)a.problemaSalud='';
   });
   /* si vienen datos de una versión anterior sin lote de sementales, se agrega */
   const lotes=(d&&Array.isArray(d.lotes)&&d.lotes.length)?d.lotes:JSON.parse(JSON.stringify(LOTES_DEF));
@@ -1049,13 +1057,19 @@ const MAPA = {
           partos:+a.partos||0, manejo:a.manejo||'seca', litros:+a.litros||0,
           prenada:!!a.prenada, f_servicio:oNull(a.fServicio),
           destino:a.destino||'inventario', valor:+a.valor||0, obs:a.obs||'',
-          estado:a.estado||'Activa', usr:a.usr||'' }),
+          estado:a.estado||'Activa', usr:a.usr||'',
+          /* clasificación de retención/descarte (solo importa en vacas) */
+          cc:(a.cc==null||a.cc==='')?null:+a.cc,
+          edad_aprox:(a.edadAprox==null||a.edadAprox==='')?null:+a.edadAprox,
+          temporadas_vacia:+a.temporadasVacia||0, problema_salud:a.problemaSalud||'' }),
         desde:r=>({
           id:r.id, arete:r.arete, nombre:r.nombre||'', sexo:r.sexo, raza:r.raza||'',
           fnac:r.fnac||'', lote:r.lote_id||'', madre:r.madre||'',
           partos:+r.partos||0, manejo:r.manejo, litros:+r.litros||0,
           prenada:!!r.prenada, fServicio:r.f_servicio||'', destino:r.destino,
-          valor:+r.valor||0, obs:r.obs||'', estado:r.estado, usr:r.usr||'', hist:[] }) },
+          valor:+r.valor||0, obs:r.obs||'', estado:r.estado, usr:r.usr||'', hist:[],
+          cc:(r.cc==null?null:+r.cc), edadAprox:(r.edad_aprox==null?null:+r.edad_aprox),
+          temporadasVacia:+r.temporadas_vacia||0, problemaSalud:r.problema_salud||'' }) },
 
   mov: { tabla:'movimientos', hacia:m=>({
           id:m.id, fecha:m.fecha, tipo:m.tipo, cat:m.cat, descr:m.desc||'',
@@ -1488,20 +1502,90 @@ function hitos(a){
     {f:suma(+D.config.vientre),  t:`${D.config.vientre} meses — ${H?'apta para monta (vaquilla de vientre)':'edad adulta'}`},
   ];
 }
-/* Descarte. Una preñada nunca se marca: está cargando una cría.
-   A la vaca de cría no se le mide por litros — no se ordeña. A esa se la
-   revisa cuando ya tiene muchos partos y encima quedó vacía. */
+/* ================================================================
+   CLASIFICACIÓN DE RETENCIÓN / DESCARTE (solo vacas: partos ≥ 1)
+   Reemplaza la regla vieja (partos + litros mínimos). Se basa en la
+   tabla que armó Fausto: edad, condición corporal (CC, escala 1–9),
+   preñez, temporadas vacía seguidas y problemas de salud.
+
+   Los códigos D (descarte) SIEMPRE ganan sobre los A/B (retención),
+   sin importar qué tan bien se vea la vaca en otro sentido — son
+   salida forzosa. Dentro de eso, D1 se revisa primero, después D2,
+   D3 y D4, en ese orden.
+
+   Simplificación a propósito: D2 de la tabla dice "CC 1–3 y no
+   recupera" — como no se lleva historial de CC en el tiempo, se
+   toma el CC bajo (1–3) solo como la señal de descarte.
+
+   Un caso que la tabla de Fausto no cubre (ej. una vaca de 6 años,
+   CC 7, sana, pero no preñada y con menos de 2 temporadas vacía) no
+   se fuerza a ninguna categoría inventada: queda "Sin clasificar en
+   este esquema", para que se vea el hueco en vez de tapiarlo. */
+const PROBLEMA_SALUD_LABEL={ubre:'Problema de ubre',patas:'Problema de patas',cronica:'Enfermedad crónica'};
+
+/* edad en años: exacta si hay fecha de nacimiento; si no, la aproximada
+   a ojo que se anotó a mano. null si no hay ninguna de las dos. */
+function edadAnios(a){
+  const m=mesesDesde(a.fnac);
+  if(m!==null)return Math.floor(m/12);
+  return (a.edadAprox!=null&&a.edadAprox!=='')?+a.edadAprox:null;
+}
+function clasificarVaca(a){
+  if((+a.partos||0)<1||a.sexo!=='H')return null;   // el esquema es solo para vacas que ya parieron
+  const edad=edadAnios(a);
+  const cc=(a.cc!=null&&a.cc!=='')?+a.cc:null;
+  const prena=!!a.prenada, vacia=+a.temporadasVacia||0, salud=a.problemaSalud||'';
+
+  if(edad!==null&&edad>=11)
+    return{cod:'D1',nombre:'Descarte por edad',tipo:'descarte',
+      motivo:`${edad} años — vendé antes de que pierda valor`};
+  if(cc!==null&&cc<=3)
+    return{cod:'D2',nombre:'Descarte por estado',tipo:'descarte',
+      motivo:`CC ${cc} — vender o sacrificar`};
+  if(vacia>=2)
+    return{cod:'D3',nombre:'Descarte reproductivo',tipo:'descarte',
+      motivo:`Vacía ${vacia} temporadas seguidas`};
+  if(salud)
+    return{cod:'D4',nombre:'Descarte sanitario',tipo:'descarte',
+      motivo:PROBLEMA_SALUD_LABEL[salud]||salud};
+
+  if(edad===null||cc===null){
+    const falta=[edad===null&&'la edad',cc===null&&'la condición corporal'].filter(Boolean).join(' y ');
+    return{cod:null,nombre:'Pendiente de evaluar',tipo:'pendiente',motivo:`Falta anotar ${falta}`};
+  }
+  if(edad>=5&&edad<=8){
+    if(prena&&(cc===6||cc===7))
+      return{cod:'A1',nombre:'Núcleo reproductivo',tipo:'retencion',motivo:'Las mejores vacas, corazón del rodeo'};
+    if(prena&&cc===5)
+      return{cod:'A2',nombre:'Productiva estable',tipo:'retencion',motivo:'Buenas vacas, mejorar alimentación'};
+    if(cc===3||cc===4)
+      return{cod:'B1',nombre:'Recuperable',tipo:'retencion',motivo:'Buena edad pero flaca, suplementar y reevaluar'};
+  }
+  if(edad>=9&&edad<=10&&prena&&cc>=5&&cc<=7)
+    return{cod:'B2',nombre:'Adulta mayor productiva',tipo:'retencion',motivo:'Mantener una temporada más'};
+
+  return{cod:null,nombre:'Sin clasificar en este esquema',tipo:'sin_clasificar',
+    motivo:'No calza en ninguna categoría de la tabla — revisar'};
+}
 function deSalida(a){
-  if(a.estado!=='Activa'||a.prenada)return false;
-  if((+a.partos||0)<(+D.config.partos))return false;
-  if(a.manejo==='ordeno')return (+a.litros||0)<(+D.config.litrosMin);
-  return true;   // de cría o seca, con muchos partos y vacía
+  if(a.estado!=='Activa')return false;
+  const c=clasificarVaca(a);
+  return!!(c&&c.tipo==='descarte');
 }
 function motivoSalida(a){
-  if(!deSalida(a))return '';
-  return a.manejo==='ordeno'
-    ? `${a.partos} partos y solo ${nf(a.litros||0)} litros/día`
-    : `${a.partos} partos, ${a.manejo==='cria'?'de cría':'seca'} y vacía`;
+  const c=clasificarVaca(a);
+  return(c&&c.tipo==='descarte')?c.motivo:'';
+}
+/* insignia para la lista del Hato y la ficha del animal */
+function badgeClasificacion(a){
+  const c=clasificarVaca(a); if(!c)return'';
+  if(c.tipo==='descarte')
+    return` <span class="pill salida" title="${esc(c.motivo)}">${c.cod} · ${esc(c.nombre)}</span>`;
+  if(c.tipo==='retencion')
+    return` <span class="pill et" title="${esc(c.motivo)}">${c.cod} · ${esc(c.nombre)}</span>`;
+  if(c.tipo==='pendiente')
+    return` <span class="pill" style="background:var(--ambar-cl);color:var(--ambar)" title="${esc(c.motivo)}">${esc(c.nombre)}</span>`;
+  return` <span class="pill inact" title="${esc(c.motivo)}">${esc(c.nombre)}</span>`;
 }
 /* fecha probable de parto = servicio + días de gestación */
 function fechaParto(a){
@@ -1950,6 +2034,8 @@ function ajustarFormAnimal(){
   document.getElementById('cManejo').style.display=esVaca?'':'none';
   document.getElementById('cLitros').style.display=
     (esVaca&&document.getElementById('aManejo').value==='ordeno')?'':'none';
+  ['cCC','cEdadAprox','cTempVacia','cProblemaSalud'].forEach(id=>
+    document.getElementById(id).style.display=esVaca?'':'none');
   if(m){document.getElementById('aPrenada').value='';document.getElementById('cServicio').style.display='none';}
 }
 ['aSexo','aPartos','aManejo'].forEach(i=>
@@ -1980,7 +2066,11 @@ document.getElementById('fAni').addEventListener('submit',e=>{
     fServicio:document.getElementById('aPrenada').value?document.getElementById('aServicio').value:'',
     destino:document.getElementById('aDestino').value||'inventario',
     valor:+document.getElementById('aValor').value||0,
-    obs:document.getElementById('aObs').value.trim(),estado:'Activa',usr:USR.u,hist:[]});
+    obs:document.getElementById('aObs').value.trim(),estado:'Activa',usr:USR.u,hist:[],
+    cc:document.getElementById('aCC').value||null,
+    edadAprox:document.getElementById('aEdadAprox').value||null,
+    temporadasVacia:+document.getElementById('aTempVacia').value||0,
+    problemaSalud:document.getElementById('aProblemaSalud').value});
   const nuevo=D.ani[D.ani.length-1];
   anotar(nuevo,`Se registró en el hato como ${etapa(nuevo)}`+
     (nuevo.madre?`, hija de ${nuevo.madre}`:'')+(nuevo.raza?`, raza ${nuevo.raza}`:''),'alta');
@@ -1991,6 +2081,8 @@ document.getElementById('fAni').addEventListener('submit',e=>{
   ['aPartos','aLitros','aValor'].forEach(i=>document.getElementById(i).value=0);
   document.getElementById('aFnac').value='';
   document.getElementById('aDestino').value='';   // el próximo macho vuelve a pedir la decisión
+  document.getElementById('aCC').value='';document.getElementById('aEdadAprox').value='';
+  document.getElementById('aTempVacia').value=0;document.getElementById('aProblemaSalud').value='';
   document.getElementById('aArete').focus();
   pintar();
 });
@@ -2049,6 +2141,15 @@ function editarAnimal(id){
         ${MANEJOS.map(m=>opt(m.v,m.n,a.manejo)).join('')}</select></div>
       <div class="campo"><label>Litros/día (solo si se ordeña)</label>
         <input type="number" id="edLitros" min="0" step="0.1" value="${+a.litros||0}"></div>
+      <div class="campo"><label>CC — condición corporal (1–9, solo vacas)</label>
+        <input type="number" id="edCC" min="1" max="9" step="1" value="${a.cc==null?'':a.cc}"></div>
+      <div class="campo"><label>Edad aproximada (años, solo si no hay fecha de nacimiento)</label>
+        <input type="number" id="edEdadAprox" min="0" step="1" value="${a.edadAprox==null?'':a.edadAprox}"></div>
+      <div class="campo"><label>Temporadas vacía seguidas (solo vacas)</label>
+        <input type="number" id="edTempVacia" min="0" step="1" value="${+a.temporadasVacia||0}"></div>
+      <div class="campo"><label>Problema de salud (solo vacas)</label><select id="edProblemaSalud">
+        ${opt('','Ninguno',a.problemaSalud)}${opt('ubre','Problema de ubre',a.problemaSalud)}
+        ${opt('patas','Problema de patas',a.problemaSalud)}${opt('cronica','Enfermedad crónica',a.problemaSalud)}</select></div>
       <div class="campo"><label>Si es macho, qué es</label><select id="edDestino">
         ${DESTINOS.map(d=>opt(d.v,d.n,a.destino)).join('')}</select></div>
       <div class="campo"><label>¿Está preñada?</label><select id="edPrenada">
@@ -2097,6 +2198,8 @@ function guardarAnimal(){
   a.litros=(a.partos>=1&&a.manejo!=='ordeno')?0:litros;
   a.prenada=!!v('edPrenada'); a.fServicio=a.prenada?v('edServicio'):'';
   a.valor=valor; a.estado=v('edEstado'); a.obs=v('edObs').trim();
+  a.cc=v('edCC')||null; a.edadAprox=v('edEdadAprox')||null;
+  a.temporadasVacia=+v('edTempVacia')||0; a.problemaSalud=v('edProblemaSalud');
 
   if(antes.etapa!==etapa(a))cambios.push(`Categoría: ${antes.etapa} → ${etapa(a)}`);
   const loteAhora=a.lote?nomLote(a.lote):'sin lote';
@@ -2337,7 +2440,7 @@ function pintarFicha(){
   document.getElementById('fichaCuerpo').innerHTML=`
     <h2 style="font-size:20px;color:var(--verde-osc)">${esc(a.arete)}${a.nombre?' — '+esc(a.nombre):''}</h2>
     <p class="ayuda">${esc(etapa(a))} · Fase: ${esc(fase(a))}${ac?'':' · <strong>'+esc(a.estado)+'</strong>'}
-      ${deSalida(a)?' · <span class="pill salida">DE SALIDA</span>':''}</p>
+      ${badgeClasificacion(a)}</p>
     <div class="acciones" style="margin-bottom:8px">
       <button class="b" onclick="editarAnimal('${a.id}')">Editar estos datos</button>
     </div>
@@ -2346,7 +2449,8 @@ function pintarFicha(){
       ${dato('Sexo',a.sexo==='H'?'Hembra':'Macho')}
       ${dato('Raza',esc(a.raza)||'sin anotar')}
       ${dato('Nacimiento',fecha(a.fnac)||'sin fecha')}
-      ${dato('Edad',e===null?'—':(e>=24?Math.floor(e/12)+' años '+(e%12)+' meses':e+' meses'))}
+      ${dato('Edad',e!==null?(e>=24?Math.floor(e/12)+' años '+(e%12)+' meses':e+' meses')
+        :(a.edadAprox!=null&&a.edadAprox!==''?'≈ '+a.edadAprox+' años (aproximada)':'—'))}
       ${dato('Madre',esc(a.madre)||'sin anotar')}
       ${dato('Lote',esc(nomLote(a.lote))||'sin lote')}
       ${(+a.partos||0)>=1?dato('Partos',a.partos):''}
@@ -2356,6 +2460,11 @@ function pintarFicha(){
         ' · parto probable '+(fecha(fechaParto(a))||'—')+
         (dp!==null?(dp<0?' (atrasado '+(-dp)+' días)':' (faltan '+dp+' días)'):'')):''}
       ${a.ultimoParto?dato('Último parto',fecha(a.ultimoParto)):''}
+      ${(+a.partos||0)>=1?dato('Condición corporal (CC)',a.cc==null?'sin anotar':a.cc+' / 9'):''}
+      ${(+a.partos||0)>=1?dato('Temporadas vacía seguidas',+a.temporadasVacia||0):''}
+      ${(+a.partos||0)>=1?dato('Problema de salud',PROBLEMA_SALUD_LABEL[a.problemaSalud]||'Ninguno'):''}
+      ${(()=>{const c=clasificarVaca(a);return c?dato('Clasificación de retención',
+        (c.cod?c.cod+' · ':'')+esc(c.nombre)+' — '+esc(c.motivo)):'';})()}
       ${dato('Valor comercial','C$ '+ni(a.valor||0))}
       ${hijos.length?dato('Crías registradas',hijos.map(h=>esc(h.arete)).join(', ')):''}
     </tbody></table></div>
@@ -2629,7 +2738,7 @@ function tablaHato(){
     <th>Lote</th><th class="num">Partos</th><th class="num">Litros/día</th><th class="num">Valor C$</th>
     <th>Madre</th><th></th></tr></thead><tbody>`+
     l.map(a=>{
-      const e=mesesDesde(a.fnac),et=etapa(a),sal=deSalida(a),ac=a.estado==='Activa';
+      const e=mesesDesde(a.fnac),et=etapa(a),ac=a.estado==='Activa';
       const dp=diasParaParto(a);
       let repro='—';
       if(a.prenada){
@@ -2639,7 +2748,7 @@ function tablaHato(){
               (dp!==null?(dp<0?` (atrasado ${-dp} d)`:` (en ${dp} d)`):'')+`</span>`:'');
       }else if(a.sexo==='H'&&(+a.partos||0)>=1)repro='<span style="color:#6b7268;font-size:12.5px">vacía</span>';
       return `<tr style="${ac?'':'opacity:.55'}">
-        <td><strong>${esc(a.arete)}</strong>${sal?' <span class="pill salida">DE SALIDA</span>':''}</td>
+        <td><strong>${esc(a.arete)}</strong>${badgeClasificacion(a)}</td>
         <td>${esc(a.nombre)||'—'}</td><td>${a.sexo==='H'?'Hembra':'Macho'}</td>
         <td><button class="mini" onclick="cambiarRaza('${a.id}')">${esc(a.raza)||'sin raza'}</button></td>
         <td>${fecha(a.fnac)||'—'}</td>
@@ -3887,19 +3996,21 @@ function imprimir(){
 /* ============================ CONFIG ============================ */
 function pintarConfig(){
   const c=D.config;
-  const m={cTc:'tc',cDestete:'destete',cVaquilla:'vaquilla',cPartos:'partos',
-           cLitrosMin:'litrosMin',cDias:'dias',cPrecio:'precio',cGestacion:'gestacion',
-           cVientre:'vientre'};
+  const m={cTc:'tc',cDestete:'destete',cVaquilla:'vaquilla',
+           cDias:'dias',cPrecio:'precio',cGestacion:'gestacion',cVientre:'vientre'};
   for(const k in m)document.getElementById(k).value=c[m[k]];
 }
 function guardarConfig(){
   const g=(id,min)=>{const v=parseFloat(document.getElementById(id).value);return (isFinite(v)&&v>=min)?v:null;};
   const tc=g('cTc',0.0001),de=g('cDestete',1),va=g('cVaquilla',1),vi=g('cVientre',1),
-        pa=g('cPartos',1),lm=g('cLitrosMin',0),di=g('cDias',1),pr=g('cPrecio',0),ge=g('cGestacion',200);
-  if([tc,de,va,vi,pa,lm,di,pr,ge].some(v=>v===null))return alert('Revisá los valores: todos tienen que ser números válidos.');
+        di=g('cDias',1),pr=g('cPrecio',0),ge=g('cGestacion',200);
+  if([tc,de,va,vi,di,pr,ge].some(v=>v===null))return alert('Revisá los valores: todos tienen que ser números válidos.');
   if(va<=de)return alert('La edad de paso a desarrollo tiene que ser mayor que la de destete.');
   if(vi<=va)return alert('La edad de aptitud para monta tiene que ser mayor que la de paso a desarrollo.');
-  D.config={tc,destete:de,vaquilla:va,vientre:vi,partos:pa,litrosMin:lm,dias:di,precio:pr,gestacion:ge};
+  /* partos/litrosMin ya no se usan (el descarte ahora sale de la clasificación por vaca,
+     ver Hato) — se conservan tal cual estaban para no dejar la fila de config a medias */
+  D.config={tc,destete:de,vaquilla:va,vientre:vi,partos:D.config.partos,litrosMin:D.config.litrosMin,
+    dias:di,precio:pr,gestacion:ge};
   guardar();pintar();alert('Reglas guardadas. Las etapas y los montos ya se recalcularon.');
 }
 
