@@ -3905,9 +3905,14 @@ function reporte(){
   const tIng=sum(mv,v=>v.tipo==='Ingreso'), tEgr=sum(mv,v=>v.tipo==='Egreso'), tRes=tIng-tEgr;
   const nDias=diasEntre(P.ini,P.fin);
   /* litros de leche del período — aparte de la plata, para el promedio de PRODUCCIÓN,
-     no solo el promedio en córdobas (se repite el cálculo del detalle de leche más abajo) */
-  const litrosPeriodo=mv.filter(v=>v.cat==='Leche'&&v.tipo==='Ingreso'&&+v.litros>0)
-    .reduce((s,v)=>s+ +v.litros,0);
+     no solo el promedio en córdobas (se repite el cálculo del detalle de leche más abajo).
+     El promedio va entre los DÍAS QUE SE ANOTARON, no entre los días del período completo:
+     si el mes tiene 31 días y solo se anotaron 8, dividir entre 31 da un promedio inflado
+     para abajo, como si los días sin anotar fueran ceros de verdad — y no lo son, es que
+     todavía no se anotaron. */
+  const movLechePeriodo=mv.filter(v=>v.cat==='Leche'&&v.tipo==='Ingreso'&&+v.litros>0);
+  const litrosPeriodo=movLechePeriodo.reduce((s,v)=>s+ +v.litros,0);
+  const diasConLeche=new Set(movLechePeriodo.map(v=>v.fecha)).size;
 
   /* mismo largo, justo antes: sirve para comparar */
   const finAnt=sumaDias(P.ini,-1), iniAnt=sumaDias(finAnt,-(nDias-1));
@@ -4006,8 +4011,8 @@ function reporte(){
         <div class="val">C$ ${ni(tRes/nDias)}</div>
         <div class="sub">margen ${tIng?((tRes/tIng)*100).toFixed(1):'0.0'}%</div></div>
       <div class="kpi"><div class="lbl">Promedio de leche</div>
-        <div class="val">${nf(litrosPeriodo/nDias)} L/día</div>
-        <div class="sub">${nf(litrosPeriodo)} litros en el período</div></div>
+        <div class="val">${diasConLeche?nf(litrosPeriodo/diasConLeche):'—'} L/día</div>
+        <div class="sub">${nf(litrosPeriodo)} litros en ${diasConLeche} día(s) anotado(s)</div></div>
     </div>
 
     <div class="aviso ${tRes>=0?'verde':'rojo'}">
@@ -4067,7 +4072,9 @@ function reporte(){
       return `<div class="tabla-cont"><table><tbody>
         <tr><td>Litros vendidos en el período</td><td class="num"><strong>${nf(litros)} litros</strong></td></tr>
         <tr><td>Entradas anotadas</td><td class="num">${lm.length}${sinL?` (${sinL} sin litros anotados)`:''}</td></tr>
-        <tr><td>Promedio por día del período</td><td class="num">${nf(litros/nDias)} litros/día</td></tr>
+        <tr><td>Días con leche anotada</td><td class="num">${diasConLeche} de ${nDias} día(s) del período</td></tr>
+        <tr><td>Promedio por día <strong>anotado</strong></td>
+          <td class="num">${diasConLeche?nf(litros/diasConLeche):'—'} litros/día</td></tr>
         <tr><td><strong>Precio promedio real</strong></td>
           <td class="num"><strong>C$ ${nf(prom)} por litro</strong></td></tr>
         <tr><td>Total cobrado por leche</td><td class="num">C$ ${nf(total)}</td></tr>
