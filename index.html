@@ -3904,6 +3904,10 @@ function reporte(){
   const sum=(lista,f)=>lista.filter(f).reduce((s,v)=>s+ +v.monto,0);
   const tIng=sum(mv,v=>v.tipo==='Ingreso'), tEgr=sum(mv,v=>v.tipo==='Egreso'), tRes=tIng-tEgr;
   const nDias=diasEntre(P.ini,P.fin);
+  /* litros de leche del período — aparte de la plata, para el promedio de PRODUCCIÓN,
+     no solo el promedio en córdobas (se repite el cálculo del detalle de leche más abajo) */
+  const litrosPeriodo=mv.filter(v=>v.cat==='Leche'&&v.tipo==='Ingreso'&&+v.litros>0)
+    .reduce((s,v)=>s+ +v.litros,0);
 
   /* mismo largo, justo antes: sirve para comparar */
   const finAnt=sumaDias(P.ini,-1), iniAnt=sumaDias(finAnt,-(nDias-1));
@@ -4001,6 +4005,9 @@ function reporte(){
       <div class="kpi"><div class="lbl">Promedio por día</div>
         <div class="val">C$ ${ni(tRes/nDias)}</div>
         <div class="sub">margen ${tIng?((tRes/tIng)*100).toFixed(1):'0.0'}%</div></div>
+      <div class="kpi"><div class="lbl">Promedio de leche</div>
+        <div class="val">${nf(litrosPeriodo/nDias)} L/día</div>
+        <div class="sub">${nf(litrosPeriodo)} litros en el período</div></div>
     </div>
 
     <div class="aviso ${tRes>=0?'verde':'rojo'}">
