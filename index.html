@@ -3904,6 +3904,11 @@ function reporte(){
   const sum=(lista,f)=>lista.filter(f).reduce((s,v)=>s+ +v.monto,0);
   const tIng=sum(mv,v=>v.tipo==='Ingreso'), tEgr=sum(mv,v=>v.tipo==='Egreso'), tRes=tIng-tEgr;
   const nDias=diasEntre(P.ini,P.fin);
+  /* mismo criterio que el promedio de leche: entre los días que de verdad tienen algo
+     anotado, no entre los días del período completo (si no, un mes recién empezado
+     sale con un promedio diario hundido, como si los días futuros ya hubieran pasado
+     con resultado cero). */
+  const diasConMov=new Set(mv.map(v=>v.fecha)).size;
   /* litros de leche del período — aparte de la plata, para el promedio de PRODUCCIÓN,
      no solo el promedio en córdobas (se repite el cálculo del detalle de leche más abajo).
      El promedio va entre los DÍAS QUE SE ANOTARON, no entre los días del período completo:
@@ -4007,9 +4012,9 @@ function reporte(){
         <div class="sub">US$ ${nf(tEgr/D.config.tc)}</div></div>
       <div class="kpi ${tRes>0?'pos':tRes<0?'neg':''}"><div class="lbl">Resultado</div>
         <div class="val">C$ ${ni(tRes)}</div><div class="sub">US$ ${nf(tRes/D.config.tc)}</div></div>
-      <div class="kpi"><div class="lbl">Promedio por día</div>
-        <div class="val">C$ ${ni(tRes/nDias)}</div>
-        <div class="sub">margen ${tIng?((tRes/tIng)*100).toFixed(1):'0.0'}%</div></div>
+      <div class="kpi"><div class="lbl">Promedio por día anotado</div>
+        <div class="val">${diasConMov?'C$ '+ni(tRes/diasConMov):'—'}</div>
+        <div class="sub">${diasConMov} de ${nDias} día(s) del período · margen ${tIng?((tRes/tIng)*100).toFixed(1):'0.0'}%</div></div>
       <div class="kpi"><div class="lbl">Promedio de leche</div>
         <div class="val">${diasConLeche?nf(litrosPeriodo/diasConLeche):'—'} L/día</div>
         <div class="sub">${nf(litrosPeriodo)} litros en ${diasConLeche} día(s) anotado(s)</div></div>
