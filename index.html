@@ -3578,7 +3578,8 @@ function tablaEmp(){
       <td><button class="mini" onclick="editarEmp('${e.id}','contacto')">${esc(e.contacto)||'—'}</button></td>
       <td style="white-space:normal;font-size:13px;color:#6b7268">
         <button class="mini" onclick="editarEmp('${e.id}','notas')">${esc(e.notas)||'—'}</button></td>
-      <td><button class="mini" onclick="editarEmpleado('${e.id}')"><strong>Editar</strong></button>
+      <td>${ac?`<button class="mini" onclick="pagarEmpleadoDirecto('${e.id}')"><strong>Pagar</strong></button>`:''}
+          <button class="mini" onclick="editarEmpleado('${e.id}')">Editar</button>
           <button class="mini" onclick="estadoEmp('${e.id}')">${ac?'Dar de baja':'Reactivar'}</button>
           <button class="mini x" onclick="borrarEmp('${e.id}')">Borrar</button></td></tr>`;}).join('')+
     `</tbody><tfoot><tr><td colspan="3">${act.length} empleado(s) activo(s)</td>
@@ -3600,6 +3601,43 @@ const totalPendiente=p=>totalPlanilla(p)-totalPagado(p);
 const diasDelPeriodo=(y,m,q)=>q==1?15:ultimoDia(y,m)-15;
 const montoPorDias=(salarioQ,dias,diasBase)=>
   Math.round((+salarioQ||0)/(diasBase||15)*(+dias||0)*100)/100;
+
+/* la quincena de hoy: 1-15 o 16-fin de mes, según el día de hoy */
+function quincenaActual(){
+  const h=new Date(), y=h.getFullYear(), m=h.getMonth()+1, dd=n=>String(n).padStart(2,'0');
+  const q1=h.getDate()<=15;
+  return { d1: q1?`${y}-${dd(m)}-01`:`${y}-${dd(m)}-16`,
+           d2: q1?`${y}-${dd(m)}-15`:`${y}-${dd(m)}-${dd(ultimoDia(y,m))}` };
+}
+/* botón "Pagar" directo desde la lista de Empleados — sin tener que
+   abrir la planilla a mano primero. Agarra (o abre) la planilla de la
+   quincena de hoy y dispara el pago solo para este empleado. Los demás
+   quedan igual que estaban, cada quien se paga por separado. */
+function pagarEmpleadoDirecto(empId){
+  const e=D.emp.find(x=>x.id===empId);if(!e)return;
+  const {d1,d2}=quincenaActual();
+  const clave=`${d1}_${d2}`;
+  let p=planillaPorClave(clave);
+  if(!p){
+    const dias=diasEntre(d1,d2);
+    p={id:uid(),periodo:clave,periodoTxt:textoPeriodoFechas(d1,d2),
+      desde:d1,hasta:d2,anio:+d1.slice(0,4),mes:+d1.slice(5,7),q:null,diasBase:dias,
+      creada:hoyISO(),usr:USR.u,lineas:[]};
+    D.planillas.push(p);
+  }
+  let l=p.lineas.find(x=>x.empId===empId);
+  if(!l){
+    l={id:uid(),empId:e.id,nombre:nomEmp(e),cargo:e.cargo||'',
+      salarioQ:+e.salarioQ||0,dias:p.diasBase,monto:+e.salarioQ||0,nota:'',
+      pagado:false,fechaPago:'',movId:'',usrPago:''};
+    p.lineas.push(l);
+  }
+  if(l.pagado)return alert(`A ${l.nombre} ya se le pagó esta quincena (${p.periodoTxt}).`);
+  PLANILLA_SEL=p.id;
+  guardar();
+  pagarLinea(l.id);
+  verPlanilla(p.id);
+}
 
 function abrirPlanilla(){
   const d1=document.getElementById('qDesde').value, d2=document.getElementById('qHasta').value;
