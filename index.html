@@ -369,7 +369,12 @@ footer a{color:var(--verde)}
             </datalist></div>
           <div class="campo"><label>Fecha de nacimiento</label><input type="date" id="aFnac"></div>
           <div class="campo"><label>Edad aproximada (si no hay fecha)</label>
-            <input type="number" id="aEdadAprox" min="0" step="0.5" placeholder="ej. 0.5 = 6 meses"></div>
+            <div style="display:flex;gap:6px">
+              <input type="number" id="aEdadAprox" min="0" step="1" placeholder="ej. 6" style="flex:1;min-width:0">
+              <select id="aEdadAproxUnidad" style="flex:0 0 auto">
+                <option value="meses">meses</option><option value="anios">años</option>
+              </select>
+            </div></div>
           <div class="campo"><label>Madre (arete)</label>
             <input type="text" id="aMadre" list="listaMadres" placeholder="elegí de la lista"></div>
           <datalist id="listaMadres"></datalist>
@@ -1479,6 +1484,24 @@ function fechaDesdeEdad(anios){
   const d=new Date(hoy.getFullYear(), hoy.getMonth()-meses, hoy.getDate());
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
+/* junta el número + la unidad (meses/años) del formulario en años
+   decimales — por dentro se sigue guardando en años (lo que ya usan
+   fechaDesdeEdad/clasificarVaca), pero nadie tiene que escribir ni
+   ver un punto decimal: eso lo resuelve esta cuenta sola. */
+function edadAniosDesdeCampos(valorId,unidadId){
+  const v=document.getElementById(valorId).value;
+  if(!v)return'';
+  const u=document.getElementById(unidadId).value;
+  return u==='meses'?(+v/12):(+v);
+}
+/* al revés: de años decimales a "6 meses" / "1 año 6 meses", para
+   mostrar sin punto decimal */
+function formatEdadAnios(anios){
+  const meses=Math.round((+anios||0)*12);
+  if(meses<12)return meses+' mes'+(meses===1?'':'es');
+  const a=Math.floor(meses/12), m=meses%12;
+  return a+' año'+(a===1?'':'s')+(m?' '+m+' mes'+(m===1?'':'es'):'');
+}
 function mesesDesde(iso){
   if(!iso)return null;
   const p=iso.split('-').map(Number),h=new Date();
@@ -2132,9 +2155,9 @@ document.getElementById('fAni').addEventListener('submit',e=>{
      etapa se siga recalculando sola con el tiempo, igual que con una
      fecha exacta. edadAprox se guarda aparte solo para mostrar "≈". */
   const fnacInput=document.getElementById('aFnac').value;
-  const edadAproxInput=document.getElementById('aEdadAprox').value;
-  const fnacFinal=fnacInput||(edadAproxInput?fechaDesdeEdad(edadAproxInput):'');
-  const edadAproxFinal=(!fnacInput&&edadAproxInput)?edadAproxInput:null;
+  const edadAproxInput=edadAniosDesdeCampos('aEdadAprox','aEdadAproxUnidad');
+  const fnacFinal=fnacInput||(edadAproxInput!==''?fechaDesdeEdad(edadAproxInput):'');
+  const edadAproxFinal=(!fnacInput&&edadAproxInput!=='')?edadAproxInput:null;
   D.ani.push({id:uid(),arete:arete,nombre:document.getElementById('aNombre').value.trim(),
     sexo:document.getElementById('aSexo').value,raza:document.getElementById('aRaza').value.trim(),
     fnac:fnacFinal,
@@ -2163,6 +2186,7 @@ document.getElementById('fAni').addEventListener('submit',e=>{
   document.getElementById('aFnac').value='';
   document.getElementById('aDestino').value='';   // el próximo macho vuelve a pedir la decisión
   document.getElementById('aCC').value='';document.getElementById('aEdadAprox').value='';
+  document.getElementById('aEdadAproxUnidad').value='meses';
   document.getElementById('aTempVacia').value=0;document.getElementById('aProblemaSalud').value='';
   document.getElementById('aArete').focus();
   pintar();
@@ -2224,8 +2248,13 @@ function editarAnimal(id){
         <input type="number" id="edLitros" min="0" step="0.1" value="${+a.litros||0}"></div>
       <div class="campo"><label>CC — condición corporal (1–9, solo vacas)</label>
         <input type="number" id="edCC" min="1" max="9" step="1" value="${a.cc==null?'':a.cc}"></div>
-      <div class="campo"><label>Volver a estimar la edad (años)${a.edadAprox!=null?' — hoy tiene ≈'+a.edadAprox+' años estimados':''}</label>
-        <input type="number" id="edEdadAprox" min="0" step="0.5" placeholder="dejalo vacío para no cambiar nada">
+      <div class="campo"><label>Volver a estimar la edad${a.edadAprox!=null?' — hoy tiene ≈'+formatEdadAnios(a.edadAprox)+' estimados':''}</label>
+        <div style="display:flex;gap:6px">
+          <input type="number" id="edEdadAprox" min="0" step="1" placeholder="dejalo vacío para no cambiar" style="flex:1;min-width:0">
+          <select id="edEdadAproxUnidad" style="flex:0 0 auto">
+            <option value="meses">meses</option><option value="anios">años</option>
+          </select>
+        </div>
         <p class="ayuda" style="margin:4px 0 0">Solo llenalo si querés corregir la edad — recalcula la fecha
           de nacimiento estimada. Si lo dejás vacío, no se toca nada.</p></div>
       <div class="campo"><label>Temporadas vacía seguidas (solo vacas)</label>
@@ -2287,10 +2316,10 @@ function guardarAnimal(){
      manda y recalcula la fecha estimada. Si no, y cambió la fecha a
      mano, esa manda y deja de ser "aproximada". Si no tocó ninguna de
      las dos, se deja tal cual estaba (no se recalcula solo). */
-  const edadNueva=v('edEdadAprox'), fnacNuevo=v('edFnac');
-  if(edadNueva){
+  const edadNueva=edadAniosDesdeCampos('edEdadAprox','edEdadAproxUnidad'), fnacNuevo=v('edFnac');
+  if(edadNueva!==''){
     const fEstim=fechaDesdeEdad(edadNueva);
-    cambios.push(`Nacimiento (reestimado): ${fecha(a.fnac)||'sin fecha'} → ≈${fecha(fEstim)} (~${edadNueva} años)`);
+    cambios.push(`Nacimiento (reestimado): ${fecha(a.fnac)||'sin fecha'} → ≈${fecha(fEstim)} (~${formatEdadAnios(edadNueva)})`);
     a.fnac=fEstim; a.edadAprox=edadNueva;
   }else if(fnacNuevo!==a.fnac){ a.fnac=fnacNuevo; a.edadAprox=null; }
 
