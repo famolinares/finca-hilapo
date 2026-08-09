@@ -368,10 +368,10 @@ footer a{color:var(--verde)}
               <option>Criollo</option><option>Brahman × Pardo</option><option>Encaste</option>
             </datalist></div>
           <div class="campo"><label>Fecha de nacimiento</label><input type="date" id="aFnac"></div>
-          <div class="campo"><label>Edad aproximada (si no hay fecha)</label>
+          <div class="campo" style="grid-column:span 2"><label>Edad aproximada (si no hay fecha)</label>
             <div style="display:flex;gap:6px">
-              <input type="number" id="aEdadAprox" min="0" step="1" placeholder="ej. 6" style="flex:1;min-width:0">
-              <select id="aEdadAproxUnidad" style="flex:0 0 auto">
+              <input type="number" id="aEdadAprox" min="0" step="1" placeholder="ej. 6" style="flex:1;min-width:80px">
+              <select id="aEdadAproxUnidad" style="flex:0 0 110px">
                 <option value="meses">meses</option><option value="anios">años</option>
               </select>
             </div></div>
@@ -2248,10 +2248,10 @@ function editarAnimal(id){
         <input type="number" id="edLitros" min="0" step="0.1" value="${+a.litros||0}"></div>
       <div class="campo"><label>CC — condición corporal (1–9, solo vacas)</label>
         <input type="number" id="edCC" min="1" max="9" step="1" value="${a.cc==null?'':a.cc}"></div>
-      <div class="campo"><label>Volver a estimar la edad${a.edadAprox!=null?' — hoy tiene ≈'+formatEdadAnios(a.edadAprox)+' estimados':''}</label>
+      <div class="campo" style="grid-column:span 2"><label>Volver a estimar la edad${a.edadAprox!=null?' — hoy tiene ≈'+formatEdadAnios(a.edadAprox)+' estimados':''}</label>
         <div style="display:flex;gap:6px">
-          <input type="number" id="edEdadAprox" min="0" step="1" placeholder="dejalo vacío para no cambiar" style="flex:1;min-width:0">
-          <select id="edEdadAproxUnidad" style="flex:0 0 auto">
+          <input type="number" id="edEdadAprox" min="0" step="1" placeholder="dejalo vacío para no cambiar" style="flex:1;min-width:80px">
+          <select id="edEdadAproxUnidad" style="flex:0 0 110px">
             <option value="meses">meses</option><option value="anios">años</option>
           </select>
         </div>
