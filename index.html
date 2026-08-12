@@ -607,6 +607,9 @@ footer a{color:var(--verde)}
     <div class="card" id="cardPlanilla" style="display:none">
       <h2 id="plTitulo">Planilla</h2>
       <p class="ayuda" id="plSub"></p>
+      <div class="campo" style="margin:10px 0 4px"><label>Nota de esta planilla (opcional)</label>
+        <textarea id="plNota" rows="2" placeholder="ej. Norvin estuvo de vacaciones la primera semana"
+          onchange="cambiarNotaPlanilla(this.value)"></textarea></div>
       <div id="plResumen"></div>
       <div class="tabla-cont" id="tblPlanilla"></div>
       <div class="acciones">
@@ -1315,7 +1318,7 @@ async function cargarTodo(){
   D.planillas = pla.map(p => ({
     id:p.id, periodo:p.periodo, periodoTxt:p.periodo_txt, anio:p.anio, mes:p.mes,
     q:p.q, desde:p.desde||'', hasta:p.hasta||'',
-    diasBase:+p.dias_base||15, usr:p.usr||'',
+    diasBase:+p.dias_base||15, usr:p.usr||'', nota:p.nota||'',
     creada:(p.creada||'').slice(0,10), lineas: porPlanilla[p.id] || [] }));
 
   /* carrito */
@@ -1407,7 +1410,7 @@ async function sincronizar(){
   await subir('planillas', dp.subir.map(p=>({
     id:p.id, periodo:p.periodo, periodo_txt:p.periodoTxt||'', anio:p.anio,
     mes:p.mes, q:p.q||null, desde:oNull(p.desde), hasta:oNull(p.hasta),
-    dias_base:+p.diasBase||15, usr:p.usr||'' })));
+    dias_base:+p.diasBase||15, usr:p.usr||'', nota:p.nota||'' })));
   await borrar('planillas', dp.borrar);
 
   const linAntes = aplanar(FOTO.planillas,'lineas',(p,l)=>({...l, _p:p.id}));
@@ -3617,7 +3620,7 @@ function abrirPlanilla(){
   if(!act.length)return alert('No hay empleados activos. Agregá alguno primero.');
   const A=partesFecha(d1);
   const p={id:uid(),periodo:`${d1}_${d2}`,periodoTxt:textoPeriodoFechas(d1,d2),
-    desde:d1,hasta:d2,anio:A.y,mes:A.m,q:null,diasBase:dias,creada:hoyISO(),usr:USR.u,
+    desde:d1,hasta:d2,anio:A.y,mes:A.m,q:null,diasBase:dias,creada:hoyISO(),usr:USR.u,nota:'',
     lineas:act.map(e=>({id:uid(),empId:e.id,nombre:nomEmp(e),cargo:e.cargo||'',
       salarioQ:+e.salarioQ||0,dias:dias,monto:+e.salarioQ||0,nota:'',
       pagado:false,fechaPago:'',movId:'',usrPago:''}))};
@@ -3756,6 +3759,13 @@ function imprimirPlanilla(){
   window.print();
 }
 
+/* nota general de la planilla — no es de un empleado en particular,
+   es algo de la quincena entera (ej. "Norvin estuvo de vacaciones") */
+function cambiarNotaPlanilla(val){
+  const p=planillaSel();if(!p)return;
+  p.nota=val.trim();
+  guardar();
+}
 function pintarPlanilla(){
   const card=document.getElementById('cardPlanilla');
   const p=planillaSel();
@@ -3766,6 +3776,7 @@ function pintarPlanilla(){
   document.getElementById('plTitulo').textContent=`Planilla del ${p.periodoTxt}`;
   document.getElementById('plSub').textContent=
     `Período de ${p.diasBase} días · ${p.lineas.length} empleado(s) · abierta el ${fecha(p.creada)}`;
+  document.getElementById('plNota').value=p.nota||'';
   document.getElementById('plResumen').innerHTML=`
     <div class="kpis" style="margin:12px 0">
       <div class="kpi"><div class="lbl">Total de la planilla</div><div class="val">C$ ${ni(tot)}</div>
@@ -3830,7 +3841,7 @@ function tablaPlanillas(){
         :(nPag?'<span class="pill" style="background:#fdf5dd;color:#8a6d1f">A medias</span>'
               :'<span class="pill egr">Sin pagar</span>');
       return `<tr style="${p.id===PLANILLA_SEL?'background:var(--verde-cl)':''}">
-        <td><strong>${esc(p.periodoTxt)}</strong></td>
+        <td><strong>${esc(p.periodoTxt)}</strong>${p.nota?`<br><span style="font-size:11.5px;color:#6b7268">📝 ${esc(p.nota)}</span>`:''}</td>
         <td class="num">${nPag} / ${p.lineas.length}</td>
         <td class="num">${nf(tot)}</td><td class="num pos">${nf(pag)}</td>
         <td class="num ${pen>0?'neg':''}">${nf(pen)}</td>
