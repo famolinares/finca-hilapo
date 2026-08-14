@@ -281,6 +281,7 @@ footer a{color:var(--verde)}
   <nav class="tabs">
     <button class="on" data-pg="diario">Diario</button>
     <button data-pg="hato">Hato</button>
+    <button data-pg="sanidad">Sanidad</button>
     <button data-pg="inventario">Inventario</button>
     <button data-pg="ventas" id="tabVentas">Ventas</button>
     <button data-pg="planilla">Planilla</button>
@@ -424,6 +425,91 @@ footer a{color:var(--verde)}
       <div id="avisoDescarte"></div>
       <div id="avisoCarrito"></div>
       <div class="tabla-cont" id="tblHato"></div>
+    </div>
+  </section>
+
+  <!-- ============ SANIDAD ============ -->
+  <section class="pg" id="pg-sanidad">
+    <div class="aviso verde">
+      <strong>Cómo funciona:</strong> primero armás el catálogo de tratamientos (una vez), después
+      los vas registrando cuando los aplicás — a un animal, a todo un lote, o a todo el hato de un
+      jalón. La app calcula sola cuándo toca el próximo, según la frecuencia de cada tratamiento —
+      no hay que anotar fechas futuras a mano.
+    </div>
+
+    <div class="card">
+      <h2>Catálogo de tratamientos</h2>
+      <p class="ayuda">Editable — agregá los que uses, ajustá la frecuencia, o desactivá los que no
+        apliquen todavía. Dejá "Frecuencia" vacío si es de una sola vez (ej. cura de ombligo).</p>
+      <form id="fCatTrat">
+        <div class="frm">
+          <div class="campo" style="grid-column:span 2"><label>Nombre</label>
+            <input type="text" id="ctNombre" placeholder="ej. Desparasitación interna" required></div>
+          <div class="campo"><label>Frecuencia (días)</label>
+            <input type="number" id="ctFrecuencia" min="1" step="1" placeholder="vacío = una sola vez"></div>
+          <div class="campo"><label>Edad mínima (meses)</label>
+            <input type="number" id="ctEdadMin" min="0" step="1" placeholder="sin mínimo"></div>
+          <div class="campo"><label>Edad máxima (meses)</label>
+            <input type="number" id="ctEdadMax" min="0" step="1" placeholder="sin máximo"></div>
+          <div class="campo"><label>Dosis sugerida</label>
+            <input type="text" id="ctDosis" placeholder="opcional"></div>
+          <div class="campo"><label>Solo vacas en ordeño</label>
+            <select id="ctSoloOrdeno"><option value="">No</option><option value="1">Sí</option></select></div>
+          <div class="campo"><label>Solo reproductores</label>
+            <select id="ctSoloReproductores"><option value="">No</option><option value="1">Sí</option></select></div>
+          <div class="campo"><button class="b" type="submit" style="width:100%">Agregar al catálogo</button></div>
+        </div>
+      </form>
+      <div class="tabla-cont" id="tblCatSanidad"></div>
+    </div>
+
+    <div class="card">
+      <h2>Registrar tratamiento aplicado</h2>
+      <p class="ayuda">Elegí a quién se lo aplicaste — un animal, todo un lote, o todo el hato — y
+        el tratamiento del catálogo. El costo (si lo ponés) se reparte entre los animales elegidos
+        y queda anotado como egreso en el Diario, categoría "Sanidad e insumos".</p>
+      <div class="frm">
+        <div class="campo"><label>Tratamiento</label><select id="trCatalogo"></select></div>
+        <div class="campo"><label>Aplicar a</label>
+          <select id="trAplicarA">
+            <option value="animal">Un animal</option>
+            <option value="lote">Todo un lote</option>
+            <option value="hato">Todo el hato activo</option>
+          </select></div>
+        <div class="campo" id="cTrAnimal"><label>Animal (arete)</label>
+          <input type="text" id="trAnimal" list="listaAretesTodos" placeholder="elegí de la lista"></div>
+        <datalist id="listaAretesTodos"></datalist>
+        <div class="campo" id="cTrLote" style="display:none"><label>Lote</label>
+          <select id="trLote"></select></div>
+        <div class="campo"><label>Fecha</label><input type="date" id="trFecha"></div>
+        <div class="campo"><label>Producto</label><input type="text" id="trProducto" placeholder="opcional"></div>
+        <div class="campo"><label>Dosis</label><input type="text" id="trDosis" placeholder="opcional"></div>
+        <div class="campo"><label>Costo total (C$)</label>
+          <input type="number" id="trCosto" min="0" step="0.01" value="0"></div>
+        <div class="campo" style="grid-column:span 2"><label>Notas</label>
+          <input type="text" id="trNotas" placeholder="opcional"></div>
+        <div class="campo"><button class="b" onclick="registrarTratamientoForm()" style="width:100%">Registrar</button></div>
+      </div>
+      <div id="trAviso"></div>
+    </div>
+
+    <div class="card">
+      <h2>Vencidos y próximos</h2>
+      <p class="ayuda">Animales atrasados o por vencer en algún tratamiento, según la frecuencia del catálogo.</p>
+      <div class="filtros">
+        <div class="campo"><label>Tratamiento</label><select id="vsTrat"><option value="">Todos</option></select></div>
+        <div class="campo"><label>Mostrar</label>
+          <select id="vsSolo"><option value="vencidos">Vencidos</option>
+            <option value="proximos7">Vencen en 7 días</option>
+            <option value="todos">Todos los que aplican</option></select></div>
+      </div>
+      <div class="tabla-cont" id="tblVencidosSanidad"></div>
+    </div>
+
+    <div class="card">
+      <h2>Resumen del hato</h2>
+      <p class="ayuda">Cuántos animales están al día contra cuántos atrasados, por tipo de tratamiento.</p>
+      <div class="tabla-cont" id="tblDashboardSanidad"></div>
     </div>
   </section>
 
@@ -865,7 +951,7 @@ const LOTES_DEF=[
 const DEF={config:{tc:36.6243,destete:6,vaquilla:12,vientre:18,partos:5,litrosMin:5,
                    dias:30,precio:0,gestacion:283},
            lotes:JSON.parse(JSON.stringify(LOTES_DEF)),mov:[],ani:[],emp:[],planillas:[],
-           carrito:[],ventas:[],bitacora:[]};
+           carrito:[],ventas:[],bitacora:[],catalogoTrat:[],tratamientos:[]};
 const CAT={Ingreso:['Leche','Venta de ganado','Otros ingresos'],
            Egreso:['Planilla','Sanidad e insumos','Combustible','Mantenimiento y gastos fijos','Gastos extraordinarios']};
 const TODAS=[...CAT.Ingreso,...CAT.Egreso];
@@ -967,7 +1053,9 @@ function normalizar(d){
           lotes:lotes,
           mov:(d&&Array.isArray(d.mov))?d.mov:[],
           ani:ani,emp:emp,planillas:planillas,carrito:carrito,ventas:ventas,
-          bitacora:(d&&Array.isArray(d.bitacora))?d.bitacora:[]};
+          bitacora:(d&&Array.isArray(d.bitacora))?d.bitacora:[],
+          catalogoTrat:(d&&Array.isArray(d.catalogoTrat))?d.catalogoTrat:[],
+          tratamientos:(d&&Array.isArray(d.tratamientos))?d.tratamientos:[]};
 }
 const razas=()=>[...new Set(D.ani.map(a=>(a.raza||'').trim()).filter(Boolean))]
   .sort((a,b)=>a.localeCompare(b,'es'));
@@ -1102,6 +1190,26 @@ const MAPA = {
 
   lotes:{ tabla:'lotes', hacia:l=>({ id:l.id, nombre:l.nombre, nota:l.nota||'' }),
           desde:r=>({ id:r.id, nombre:r.nombre, nota:r.nota||'' }) },
+
+  catalogoTrat:{ tabla:'catalogo_tratamientos', hacia:c=>({
+          id:c.id, nombre:c.nombre, frecuencia_dias:c.frecuenciaDias||null,
+          unica_vez:!!c.unicaVez, edad_min_meses:c.edadMinMeses==null?null:+c.edadMinMeses,
+          edad_max_meses:c.edadMaxMeses==null?null:+c.edadMaxMeses,
+          solo_ordeno:!!c.soloOrdeno, solo_reproductores:!!c.soloReproductores,
+          dosis_sugerida:c.dosisSugerida||'', activo:c.activo!==false, orden:+c.orden||0 }),
+        desde:r=>({ id:r.id, nombre:r.nombre, frecuenciaDias:r.frecuencia_dias==null?null:+r.frecuencia_dias,
+          unicaVez:!!r.unica_vez, edadMinMeses:r.edad_min_meses==null?null:+r.edad_min_meses,
+          edadMaxMeses:r.edad_max_meses==null?null:+r.edad_max_meses,
+          soloOrdeno:!!r.solo_ordeno, soloReproductores:!!r.solo_reproductores,
+          dosisSugerida:r.dosis_sugerida||'', activo:r.activo!==false, orden:+r.orden||0 }) },
+
+  tratamientos:{ tabla:'tratamientos', hacia:t=>({
+          id:t.id, animal_id:t.aniId, catalogo_id:t.catId, fecha:t.fecha,
+          producto:t.producto||'', dosis:t.dosis||'', costo:+t.costo||0,
+          notas:t.notas||'', usr:t.usr||'' }),
+        desde:r=>({ id:r.id, aniId:r.animal_id, catId:r.catalogo_id, fecha:r.fecha,
+          producto:r.producto||'', dosis:r.dosis||'', costo:+r.costo||0,
+          notas:r.notas||'', usr:r.usr||'' }) },
 
   ventas:{ tabla:'ventas', hacia:v=>({
           id:v.id, nombre:v.nombre||'', fecha:v.fecha, comprador:v.comprador||'',
@@ -1276,12 +1384,19 @@ async function cargarTodo(){
       traer('planilla_lineas'), traer('carrito'), traer('ventas','fecha'),
       traer('venta_lineas'), traer('bitacora','cuando')
     ]);
-  /* animal_fotos aparte y con su propio try/catch: si esa tabla no
-     existe todavía (o falla por lo que sea) NO tiene que tumbar el
-     login de todo el mundo — sin fotos es mejor que sin app. */
+  /* animal_fotos y las tablas de Sanidad aparte, cada una con su propio
+     try/catch: si una tabla nueva todavía no existe (o falla por lo que
+     sea) NO tiene que tumbar el login de todo el mundo — igual pasó una
+     vez con animal_fotos, no se repite ese error. */
   let fot=[];
   try{ fot=await traer('animal_fotos','fecha'); }
   catch(e){ console.error('No se pudieron leer las fotos del ganado:',e); }
+  let catTrat=[];
+  try{ catTrat=await traer('catalogo_tratamientos','orden'); }
+  catch(e){ console.error('No se pudo leer el catálogo de tratamientos:',e); }
+  let trats=[];
+  try{ trats=await traer('tratamientos','fecha'); }
+  catch(e){ console.error('No se pudieron leer los tratamientos:',e); }
 
   const c = cfg[0] || {};
   D = {
@@ -1293,7 +1408,9 @@ async function cargarTodo(){
     mov:   mov.map(MAPA.mov.desde),
     emp:   emp.map(MAPA.emp.desde),
     planillas: [], carrito: [], ventas: ven.map(MAPA.ventas.desde),
-    bitacora: bit.map(MAPA.bitacora.desde)
+    bitacora: bit.map(MAPA.bitacora.desde),
+    catalogoTrat: catTrat.map(MAPA.catalogoTrat.desde),
+    tratamientos: trats.map(MAPA.tratamientos.desde)
   };
 
   /* historial dentro de cada animal */
@@ -1378,6 +1495,17 @@ async function sincronizar(){
     const d = diferencia(FOTO[llave], D[llave]);
     await subir(m.tabla, d.subir.map(m.hacia));
     await borrar(m.tabla, d.borrar);
+  }
+  /* --- catálogo de tratamientos y tratamientos aplicados (Sanidad) ---
+     aparte y con su propio try/catch: son tablas nuevas — si todavía no
+     existen no tienen que bloquear el guardado de todo lo demás. */
+  for(const llave of ['catalogoTrat','tratamientos']){
+    try{
+      const m = MAPA[llave];
+      const d = diferencia(FOTO[llave], D[llave]);
+      await subir(m.tabla, d.subir.map(m.hacia));
+      await borrar(m.tabla, d.borrar);
+    }catch(e){ console.error('No se pudo guardar '+llave+':',e); }
   }
 
   /* --- historial por animal --- */
@@ -2467,12 +2595,13 @@ function guardarEdicion(){
   if(EDIT.tipo==='animal')return guardarAnimal();
   if(EDIT.tipo==='empleado')return guardarEmpleado();
   if(EDIT.tipo==='mov')return guardarMov();
+  if(EDIT.tipo==='catTrat')return guardarCatTrat();
   cerrarEditar();
 }
 
 /* ================= FICHA E HISTORIAL DEL ANIMAL ================= */
 let FICHA_ID=null;
-const ICONO={alta:'🐄',parto:'🍼',repro:'♥',manejo:'↻',lote:'⇄',dato:'✎',salida:'✕',nota:'📝'};
+const ICONO={alta:'🐄',parto:'🍼',repro:'♥',manejo:'↻',lote:'⇄',dato:'✎',salida:'✕',nota:'📝',sanidad:'💉'};
 function abrirFicha(id){
   FICHA_ID=id;pintarFicha();
   document.getElementById('modalFicha').style.display='flex';
@@ -2619,6 +2748,26 @@ function pintarFicha(){
             <button class="mini x" onclick="borrarFotoAnimal('${a.id}','${f.id}')">Borrar</button></td>
       </tr>`).join('')+`</tbody></table></div>`
       :'<p class="vacio">Todavía no hay fotos de este animal.</p>'}
+
+    <h3 class="sec">Sanidad</h3>
+    ${(()=>{
+      const aplicables=catActivos().map(c=>({c,est:estadoTratamiento(a,c)})).filter(x=>x.est);
+      const pendientes=aplicables.filter(x=>x.est.vencido);
+      const historial=D.tratamientos.filter(t=>t.aniId===a.id).sort((x,y)=>y.fecha.localeCompare(x.fecha));
+      return (pendientes.length?`<div class="aviso rojo" style="margin-bottom:10px">
+          <strong>Pendiente:</strong> ${pendientes.map(x=>esc(x.c.nombre)+
+            (x.est.proxima?' ('+(x.est.vencido?'atrasado desde '+fecha(x.est.proxima):'toca el '+fecha(x.est.proxima))+')'
+                          :' (nunca aplicado)')).join(' · ')}</div>`:'')+
+        (historial.length?`<div class="tabla-cont"><table><thead><tr><th>Fecha</th><th>Tratamiento</th>
+          <th>Producto</th><th>Dosis</th><th class="num">Costo C$</th><th>Notas</th></tr></thead><tbody>`+
+          historial.map(t=>{const c=D.catalogoTrat.find(x=>x.id===t.catId);
+            return `<tr><td>${fecha(t.fecha)}</td><td><strong>${esc(c?c.nombre:'—')}</strong></td>
+              <td>${esc(t.producto)||'—'}</td><td>${esc(t.dosis)||'—'}</td>
+              <td class="num">${t.costo?nf(t.costo):'—'}</td>
+              <td style="white-space:normal;color:#6b7268;font-size:13px">${esc(t.notas)||'—'}</td></tr>`;}).join('')+
+          `</tbody></table></div>`
+          :'<p class="vacio">Todavía no hay tratamientos registrados para este animal.</p>');
+    })()}
 
     <h3 class="sec">Descendencia</h3>
     <p class="ayuda">Solo por línea materna. Los toros andan con el hato, así que el padre
@@ -3476,6 +3625,275 @@ function moverLote(){
   if(!confirm(`¿Mover ${s.length} animal(es) a "${destino?nomLote(destino):'sin lote'}"?`))return;
   s.forEach(x=>x.lote=destino);
   guardar();pintar();
+}
+
+/* ============================ SANIDAD ============================
+   Catálogo de tratamientos (editable, como Lotes de manejo) + registro
+   de tratamientos aplicados por animal. La "próxima fecha" NUNCA se
+   guarda — se calcula sola (último aplicado + frecuencia del
+   catálogo), igual que ya hace la app con la etapa del animal: nunca
+   se guarda una conclusión que se puede derivar de los hechos. */
+function catActivos(){ return D.catalogoTrat.filter(c=>c.activo).sort((a,b)=>(+a.orden||0)-(+b.orden||0)); }
+
+/* ¿le toca este tratamiento a este animal, según las reglas del catálogo? */
+function tratamientoAplicaA(cat,a){
+  if(!cat.activo)return false;
+  if(a.estado!=='Activa')return false;
+  const edadM=mesesDesde(a.fnac);
+  if(cat.edadMinMeses!=null&&(edadM===null||edadM<cat.edadMinMeses))return false;
+  if(cat.edadMaxMeses!=null&&(edadM===null||edadM>cat.edadMaxMeses))return false;
+  if(cat.soloOrdeno&&a.manejo!=='ordeno')return false;
+  if(cat.soloReproductores&&!((+a.partos||0)>=1||a.destino==='semental'))return false;
+  return true;
+}
+function ultimoTratamientoDe(aniId,catId){
+  const l=D.tratamientos.filter(t=>t.aniId===aniId&&t.catId===catId);
+  if(!l.length)return null;
+  return l.slice().sort((x,y)=>y.fecha.localeCompare(x.fecha))[0];
+}
+/* estado de un tratamiento para un animal — null si no le toca (por
+   edad, sexo, ordeño, etc. — ver tratamientoAplicaA) */
+/* "vencido" es lo único que dice si hace falta actuar. Para una única
+   vez: vencido = nunca se aplicó. Para uno recurrente: vencido = la
+   próxima fecha (última vez + frecuencia) ya pasó — un tratamiento
+   recurrente YA aplicado y todavía no vencido NO es "pendiente". */
+function estadoTratamiento(a,cat){
+  if(!tratamientoAplicaA(cat,a))return null;
+  const ult=ultimoTratamientoDe(a.id,cat.id);
+  if(cat.unicaVez){
+    return ult?{vencido:false,ultima:ult.fecha,proxima:null,nunca:false}
+              :{vencido:true,ultima:null,proxima:null,nunca:true};
+  }
+  if(!ult)return {vencido:true,ultima:null,proxima:null,nunca:true};
+  const prox=sumaDias(ult.fecha,cat.frecuenciaDias||0);
+  return {vencido:prox<=hoyISO(),ultima:ult.fecha,proxima:prox,nunca:false};
+}
+
+/* ---------- catálogo (editable desde la app) ---------- */
+document.getElementById('fCatTrat').addEventListener('submit',e=>{
+  e.preventDefault();
+  const nombre=document.getElementById('ctNombre').value.trim();
+  if(!nombre)return alert('Poné el nombre del tratamiento.');
+  if(D.catalogoTrat.some(c=>c.nombre.toLowerCase()===nombre.toLowerCase()))
+    return alert('Ya hay un tratamiento con ese nombre en el catálogo.');
+  const frec=document.getElementById('ctFrecuencia').value;
+  const eMin=document.getElementById('ctEdadMin').value;
+  const eMax=document.getElementById('ctEdadMax').value;
+  D.catalogoTrat.push({id:uid(),nombre,
+    frecuenciaDias:frec?+frec:null, unicaVez:!frec,
+    edadMinMeses:eMin?+eMin:null, edadMaxMeses:eMax?+eMax:null,
+    soloOrdeno:!!document.getElementById('ctSoloOrdeno').value,
+    soloReproductores:!!document.getElementById('ctSoloReproductores').value,
+    dosisSugerida:document.getElementById('ctDosis').value.trim(),
+    activo:true, orden:D.catalogoTrat.length});
+  ['ctNombre','ctFrecuencia','ctEdadMin','ctEdadMax','ctDosis'].forEach(i=>document.getElementById(i).value='');
+  document.getElementById('ctSoloOrdeno').value='';document.getElementById('ctSoloReproductores').value='';
+  guardar();pintar();
+});
+function editarCatTrat(id){
+  const c=D.catalogoTrat.find(x=>x.id===id);if(!c)return;
+  abrirEditor('catTrat',id,`Editar "${esc(c.nombre)}"`,
+    'Dejá "Frecuencia" vacío si es de una sola vez (ej. cura de ombligo, descorne).',
+    `<div class="frm">
+      <div class="campo" style="grid-column:span 2"><label>Nombre</label>
+        <input type="text" id="edCtNombre" value="${esc(c.nombre)}"></div>
+      <div class="campo"><label>Frecuencia (días)</label>
+        <input type="number" id="edCtFrecuencia" min="1" step="1" value="${c.frecuenciaDias||''}"
+          placeholder="vacío = una sola vez"></div>
+      <div class="campo"><label>Edad mínima (meses)</label>
+        <input type="number" id="edCtEdadMin" min="0" step="1" value="${c.edadMinMeses==null?'':c.edadMinMeses}"
+          placeholder="sin mínimo"></div>
+      <div class="campo"><label>Edad máxima (meses)</label>
+        <input type="number" id="edCtEdadMax" min="0" step="1" value="${c.edadMaxMeses==null?'':c.edadMaxMeses}"
+          placeholder="sin máximo"></div>
+      <div class="campo"><label>Dosis sugerida</label>
+        <input type="text" id="edCtDosis" value="${esc(c.dosisSugerida)}"></div>
+      <div class="campo"><label>Solo vacas en ordeño</label><select id="edCtSoloOrdeno">
+        <option value="" ${c.soloOrdeno?'':'selected'}>No</option>
+        <option value="1" ${c.soloOrdeno?'selected':''}>Sí</option></select></div>
+      <div class="campo"><label>Solo reproductores</label><select id="edCtSoloReproductores">
+        <option value="" ${c.soloReproductores?'':'selected'}>No</option>
+        <option value="1" ${c.soloReproductores?'selected':''}>Sí</option></select></div>
+    </div>`);
+}
+function guardarCatTrat(){
+  const c=D.catalogoTrat.find(x=>x.id===EDIT.id);if(!c)return cerrarEditar();
+  const v=id=>document.getElementById(id).value;
+  const nombre=v('edCtNombre').trim();
+  if(!nombre)return errEdit('El nombre no puede quedar vacío.');
+  if(D.catalogoTrat.some(x=>x.id!==c.id&&x.nombre.toLowerCase()===nombre.toLowerCase()))
+    return errEdit('Ya hay otro tratamiento con ese nombre.');
+  const frec=v('edCtFrecuencia'), eMin=v('edCtEdadMin'), eMax=v('edCtEdadMax');
+  c.nombre=nombre; c.frecuenciaDias=frec?+frec:null; c.unicaVez=!frec;
+  c.edadMinMeses=eMin?+eMin:null; c.edadMaxMeses=eMax?+eMax:null;
+  c.dosisSugerida=v('edCtDosis').trim();
+  c.soloOrdeno=v('edCtSoloOrdeno')==='1'; c.soloReproductores=v('edCtSoloReproductores')==='1';
+  guardar();cerrarEditar();pintar();
+}
+function activarCatTrat(id,val){
+  const c=D.catalogoTrat.find(x=>x.id===id);if(!c)return;
+  c.activo=val; guardar();pintar();
+}
+function borrarCatTrat(id){
+  const c=D.catalogoTrat.find(x=>x.id===id);if(!c)return;
+  const n=D.tratamientos.filter(t=>t.catId===id).length;
+  if(n)return alert(`No se puede borrar "${c.nombre}": tiene ${n} tratamiento(s) aplicados en el historial.\n\nUsá "Desactivar" en vez de borrar.`);
+  if(!confirm(`¿Borrar "${c.nombre}" del catálogo?`))return;
+  D.catalogoTrat=D.catalogoTrat.filter(x=>x.id!==id);
+  guardar();pintar();
+}
+function tablaCatalogoSanidad(){
+  const cont=document.getElementById('tblCatSanidad');if(!cont)return;
+  if(!D.catalogoTrat.length){cont.innerHTML='<p class="vacio">No hay tratamientos en el catálogo. Agregá el primero arriba.</p>';return;}
+  const l=D.catalogoTrat.slice().sort((a,b)=>(+a.orden||0)-(+b.orden||0));
+  cont.innerHTML=`<table><thead><tr><th>Tratamiento</th><th>Frecuencia</th><th>A quién aplica</th>
+    <th>Dosis sugerida</th><th>Estado</th><th></th></tr></thead><tbody>`+
+    l.map(c=>{
+      const aplica=[
+        (c.edadMinMeses!=null||c.edadMaxMeses!=null)
+          ?`${c.edadMinMeses!=null?'desde '+c.edadMinMeses+'m':''}${c.edadMaxMeses!=null?' hasta '+c.edadMaxMeses+'m':''}`.trim()
+          :'',
+        c.soloOrdeno?'solo en ordeño':'', c.soloReproductores?'solo reproductores':''
+      ].filter(Boolean).join(' · ')||'todos los animales activos';
+      return `<tr style="${c.activo?'':'opacity:.55'}">
+        <td><strong>${esc(c.nombre)}</strong></td>
+        <td>${c.unicaVez?'Una sola vez':`Cada ${c.frecuenciaDias} días`}</td>
+        <td style="color:#6b7268;font-size:13px">${esc(aplica)}</td>
+        <td style="color:#6b7268;font-size:13px">${esc(c.dosisSugerida)||'—'}</td>
+        <td>${c.activo?'<span class="pill et">activo</span>':'<span class="pill inact">desactivado</span>'}</td>
+        <td><button class="mini" onclick="editarCatTrat('${c.id}')">Editar</button>
+            <button class="mini" onclick="activarCatTrat('${c.id}',${c.activo?'false':'true'})">${c.activo?'Desactivar':'Activar'}</button>
+            <button class="mini x" onclick="borrarCatTrat('${c.id}')">Borrar</button></td></tr>`;
+    }).join('')+`</tbody></table>`;
+}
+
+/* ---------- registrar tratamiento aplicado ---------- */
+document.getElementById('trAplicarA').addEventListener('change',e=>{
+  document.getElementById('cTrAnimal').style.display=e.target.value==='animal'?'':'none';
+  document.getElementById('cTrLote').style.display=e.target.value==='lote'?'':'none';
+});
+function registrarTratamientoForm(){
+  const catId=document.getElementById('trCatalogo').value;
+  const cat=D.catalogoTrat.find(c=>c.id===catId);
+  if(!cat)return alert('Elegí un tratamiento del catálogo (agregá uno primero si la lista está vacía).');
+  const modo=document.getElementById('trAplicarA').value;
+  const fecha=document.getElementById('trFecha').value||hoyISO();
+  let animales=[];
+  if(modo==='animal'){
+    const arete=document.getElementById('trAnimal').value.trim();
+    if(!arete)return alert('Poné el arete del animal.');
+    const a=D.ani.find(x=>x.arete.toLowerCase()===arete.toLowerCase()&&x.estado==='Activa');
+    if(!a)return alert('No encontré ese arete entre los animales activos.');
+    animales=[a];
+  }else if(modo==='lote'){
+    const loteId=document.getElementById('trLote').value;
+    animales=D.ani.filter(a=>a.lote===loteId&&a.estado==='Activa');
+    if(!animales.length)return alert('Ese lote no tiene animales activos.');
+  }else{
+    animales=activos();
+  }
+  /* solo se aplica a los que de verdad entran en las reglas del catálogo
+     (edad, ordeño, reproductores) — a los demás se les deja afuera */
+  const aplicables=animales.filter(a=>tratamientoAplicaA(cat,a));
+  const noAplicables=animales.length-aplicables.length;
+  if(!aplicables.length)return alert('Ninguno de los animales elegidos entra en las reglas de este tratamiento (edad, ordeño, etc.).');
+  if(noAplicables&&!confirm(`${aplicables.length} de ${animales.length} animal(es) elegidos entran en las reglas de "${cat.nombre}".\n`+
+    `${noAplicables} no (por edad u otra condición) y se van a dejar afuera.\n\n¿Seguir con los ${aplicables.length}?`))return;
+
+  const producto=document.getElementById('trProducto').value.trim();
+  const dosis=document.getElementById('trDosis').value.trim();
+  const notas=document.getElementById('trNotas').value.trim();
+  const costo=+document.getElementById('trCosto').value||0;
+  const costoPorAnimal=aplicables.length?Math.round((costo/aplicables.length)*100)/100:0;
+
+  aplicables.forEach(a=>{
+    D.tratamientos.push({id:uid(),aniId:a.id,catId:cat.id,fecha,producto,dosis,
+      costo:costoPorAnimal,notas,usr:USR.u});
+    anotar(a,`${cat.nombre}${producto?' — '+producto:''}${dosis?' · '+dosis:''}`,'sanidad',fecha);
+  });
+  if(costo>0){
+    D.mov.push({id:uid(),fecha,tipo:'Egreso',cat:'Sanidad e insumos',
+      desc:`${cat.nombre} — ${aplicables.length} animal(es)${producto?' · '+producto:''}`,
+      monto:costo,usr:USR.u});
+  }
+  guardar();pintar();
+  document.getElementById('trAviso').innerHTML=
+    `<div class="aviso verde">Registrado: <strong>${esc(cat.nombre)}</strong> a ${aplicables.length} animal(es).</div>`;
+  document.getElementById('trAnimal').value='';document.getElementById('trProducto').value='';
+  document.getElementById('trDosis').value='';document.getElementById('trNotas').value='';
+  document.getElementById('trCosto').value=0;
+}
+/* atajo desde la lista de "Vencidos y próximos": deja precargado el
+   animal y el tratamiento, solo falta confirmar */
+function aplicarRapidoSanidad(aniId,catId){
+  const a=D.ani.find(x=>x.id===aniId);if(!a)return;
+  document.getElementById('trCatalogo').value=catId;
+  document.getElementById('trAplicarA').value='animal';
+  document.getElementById('trAplicarA').dispatchEvent(new Event('change'));
+  document.getElementById('trAnimal').value=a.arete;
+  document.getElementById('trFecha').value=hoyISO();
+  document.getElementById('trAnimal').scrollIntoView({behavior:'smooth',block:'center'});
+}
+
+/* ---------- vencidos y próximos ---------- */
+function calcularEstadosSanidad(){
+  const out=[];
+  activos().forEach(a=>{
+    catActivos().forEach(c=>{
+      const est=estadoTratamiento(a,c);
+      if(est)out.push({a,c,...est});
+    });
+  });
+  return out;
+}
+function tablaVencidosSanidad(){
+  const cont=document.getElementById('tblVencidosSanidad');if(!cont)return;
+  const filtroTrat=document.getElementById('vsTrat').value;
+  const filtroSolo=document.getElementById('vsSolo').value;
+  const hoy=hoyISO();
+  /* "todos" = todo lo que aplica, vencido o no — un tratamiento recurrente
+     ya aplicado y con la próxima fecha lejos NO es un pendiente, así que
+     no hay filtro base acá: cada opción de abajo decide qué mostrar. */
+  let l=calcularEstadosSanidad();
+  if(filtroTrat)l=l.filter(x=>x.c.id===filtroTrat);
+  if(filtroSolo==='vencidos')l=l.filter(x=>x.vencido);
+  else if(filtroSolo==='proximos7')l=l.filter(x=>!x.vencido&&x.proxima&&diasEntre(hoy,x.proxima)<=8);
+  l.sort((x,y)=>(x.proxima||hoy).localeCompare(y.proxima||hoy));
+  if(!l.length){cont.innerHTML='<p class="vacio">No hay nada con estos filtros — buena señal.</p>';return;}
+  cont.innerHTML=`<table><thead><tr><th>Animal</th><th>Tratamiento</th><th>Última vez</th>
+    <th>Corresponde</th><th></th></tr></thead><tbody>`+
+    l.map(x=>{
+      const dias=x.proxima?Math.round((aDate(x.proxima)-aDate(hoy))/86400000):null;
+      const cuando=x.nunca?'<span class="pill salida">nunca se le aplicó</span>'
+        :x.vencido?`<span class="pill salida">atrasado ${-dias} día(s)</span>`
+        :`<span class="pill prena">en ${dias} día(s)</span>`;
+      return `<tr>
+        <td><button class="mini" onclick="abrirFicha('${x.a.id}')"><strong>${esc(x.a.arete)}</strong></button>
+          ${esc(x.a.nombre)||''}</td>
+        <td>${esc(x.c.nombre)}</td>
+        <td>${x.ultima?fecha(x.ultima):'—'}</td>
+        <td>${x.proxima?fecha(x.proxima)+' · ':''}${cuando}</td>
+        <td><button class="mini" onclick="aplicarRapidoSanidad('${x.a.id}','${x.c.id}')">Registrar ahora</button></td></tr>`;
+    }).join('')+`</tbody></table>`;
+}
+
+/* ---------- resumen del hato ---------- */
+function pintarDashboardSanidad(){
+  const cont=document.getElementById('tblDashboardSanidad');if(!cont)return;
+  const cats=catActivos();
+  if(!cats.length){cont.innerHTML='<p class="vacio">Agregá tratamientos al catálogo para ver el resumen.</p>';return;}
+  const act=activos();
+  cont.innerHTML=`<table><thead><tr><th>Tratamiento</th><th class="num">Les toca</th>
+    <th class="num">Al día</th><th class="num">Atrasados</th></tr></thead><tbody>`+
+    cats.map(c=>{
+      const estados=act.map(a=>estadoTratamiento(a,c)).filter(Boolean);
+      const atrasados=estados.filter(e=>e.vencido).length;
+      const alDia=estados.length-atrasados;
+      return `<tr><td><strong>${esc(c.nombre)}</strong></td>
+        <td class="num">${estados.length}</td>
+        <td class="num pos">${alDia}</td>
+        <td class="num ${atrasados?'neg':''}">${atrasados}</td></tr>`;
+    }).join('')+`</tbody></table>`;
 }
 
 /* ============================ PLANILLA ============================ */
@@ -4462,11 +4880,32 @@ function llenarSelects(){
   const ma=document.getElementById('movA'),pm=ma.value;
   ma.innerHTML=opLotes+'<option value="__sin">Sin lote</option>';
   ma.value=(pm==='__sin'||D.lotes.some(l=>l.id===pm))?pm:(D.lotes[0]?D.lotes[0].id:'__sin');
+
+  /* selects de Sanidad */
+  const laa=document.getElementById('listaAretesTodos');
+  if(laa)laa.innerHTML=D.ani.filter(x=>x.estado==='Activa')
+    .sort((a,b)=>a.arete.localeCompare(b.arete,'es',{numeric:true}))
+    .map(x=>`<option value="${esc(x.arete)}">${esc(x.arete)}${x.nombre?' · '+esc(x.nombre):''}</option>`).join('');
+  const trl=document.getElementById('trLote');
+  if(trl){const ptrl=trl.value; trl.innerHTML=opLotes;
+    trl.value=D.lotes.some(l=>l.id===ptrl)?ptrl:(D.lotes[0]?D.lotes[0].id:'');}
+  const trc=document.getElementById('trCatalogo');
+  if(trc){const ptrc=trc.value;
+    trc.innerHTML=catActivos().map(c=>`<option value="${c.id}">${esc(c.nombre)}</option>`).join('')
+      ||'<option value="">Agregá un tratamiento al catálogo primero</option>';
+    trc.value=D.catalogoTrat.some(c=>c.id===ptrc)?ptrc:(catActivos()[0]?catActivos()[0].id:'');}
+  const vst=document.getElementById('vsTrat');
+  if(vst){const pvst=vst.value;
+    vst.innerHTML='<option value="">Todos</option>'+catActivos().map(c=>`<option value="${c.id}">${esc(c.nombre)}</option>`).join('');
+    vst.value=D.catalogoTrat.some(c=>c.id===pvst)?pvst:'';}
+  const trf=document.getElementById('trFecha');
+  if(trf&&!trf.value)trf.value=hoyISO();
 }
 function pintar(){llenarSelects();kpis();tablaDiario();tablaHato();tablaInventario();tablaLotes();
   tablaEmp();pintarPlanilla();tablaPlanillas();pintarCarrito();pintarAvisoCarrito();
   pintarAvisoDescarte();tablaVentas();
-  tablaUsuarios();pintarPermisos();pintarQuePasa();tablaBitacora();reporte();}
+  tablaUsuarios();pintarPermisos();pintarQuePasa();tablaBitacora();reporte();
+  tablaCatalogoSanidad();tablaVencidosSanidad();pintarDashboardSanidad();}
 
 document.querySelectorAll('nav.tabs button').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('nav.tabs button').forEach(x=>x.classList.remove('on'));
@@ -4479,6 +4918,7 @@ document.querySelectorAll('nav.tabs button').forEach(b=>b.addEventListener('clic
   document.getElementById(i).addEventListener('change',tablaHato));
 document.getElementById('hBuscar').addEventListener('input',tablaHato);
 document.getElementById('eFiltro').addEventListener('change',tablaEmp);
+['vsTrat','vsSolo'].forEach(i=>document.getElementById(i).addEventListener('change',tablaVencidosSanidad));
 ['invPor','invVer'].forEach(i=>document.getElementById(i).addEventListener('change',()=>{
   ABIERTOS.clear();tablaInventario();}));
 ['qDesde','qHasta'].forEach(i=>
