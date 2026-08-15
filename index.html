@@ -4453,8 +4453,8 @@ function reporte(){
         <div class="sub">US$ ${nf(tEgr/D.config.tc)}</div></div>
       <div class="kpi ${tRes>0?'pos':tRes<0?'neg':''}"><div class="lbl">Resultado</div>
         <div class="val">C$ ${ni(tRes)}</div><div class="sub">US$ ${nf(tRes/D.config.tc)}</div></div>
-      <div class="kpi"><div class="lbl">Promedio por día anotado</div>
-        <div class="val">${diasConMov?'C$ '+ni(tRes/diasConMov):'—'}</div>
+      <div class="kpi"><div class="lbl">Promedio de ingresos por día anotado</div>
+        <div class="val">${diasConMov?'C$ '+ni(tIng/diasConMov):'—'}</div>
         <div class="sub">${diasConMov} de ${nDias} día(s) del período · margen ${tIng?((tRes/tIng)*100).toFixed(1):'0.0'}%</div></div>
       <div class="kpi"><div class="lbl">Promedio de leche</div>
         <div class="val">${diasConLeche?nf(litrosPeriodo/diasConLeche):'—'} L/día</div>
