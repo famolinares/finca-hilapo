@@ -3919,6 +3919,15 @@ function textoPeriodoFechas(a,b){
   if(A.y===B.y)            return `${A.d} de ${mA} al ${B.d} de ${mB} ${A.y}`;
   return `${A.d} de ${mA} ${A.y} al ${B.d} de ${mB} ${B.y}`;
 }
+/* versión corta del período, solo para la descripción del egreso en el Diario
+   (esa columna se hacía tan larga que había que estar desplazando la tabla
+   a los lados para llegar a los botones de Editar/Borrar) */
+function textoPeriodoCorto(a,b){
+  const A=partesFecha(a), B=partesFecha(b);
+  const mA=MESES[A.m-1].slice(0,3).toLowerCase(), mB=MESES[B.m-1].slice(0,3).toLowerCase();
+  if(A.m===B.m) return `${A.d}-${B.d} ${mA}`;
+  return `${A.d} ${mA}-${B.d} ${mB}`;
+}
 function periodoRapido(cual){
   const h=new Date(), y=h.getFullYear(), m=h.getMonth()+1, dd=n=>String(n).padStart(2,'0');
   let d1,d2;
@@ -4086,8 +4095,9 @@ function pagarLinea(lid){
   if(f===null)return;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(f))return alert('La fecha va así: 2026-08-15');
   const movId=uid();
+  const [d1,d2]=p.periodo.split('_');
   D.mov.push({id:movId,fecha:f,tipo:'Egreso',cat:'Planilla',
-    desc:`Quincena ${p.periodoTxt} — ${l.nombre}${l.cargo?' ('+l.cargo+')':''} · ${l.dias} de ${p.diasBase} días`+
+    desc:`${l.nombre}${l.cargo?' ('+l.cargo+')':''} — Q ${textoPeriodoCorto(d1,d2)} · ${l.dias}/${p.diasBase}d`+
          (l.nota?' · '+l.nota:''),
     monto:+l.monto,usr:USR.u});
   l.pagado=true;l.fechaPago=f;l.movId=movId;l.usrPago=USR.u;
@@ -4118,10 +4128,11 @@ function pagarSeleccionados(){
   const f=prompt(`Pagar ${sel.length} empleado(s) seleccionados\n\nTotal C$ ${nf(sel.reduce((s,l)=>s+ +l.monto,0))}\n\n¿Qué día se paga?`,hoyISO());
   if(f===null)return;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(f))return alert('La fecha va así: 2026-08-15');
+  const [d1,d2]=p.periodo.split('_');
   sel.forEach(l=>{
     const movId=uid();
     D.mov.push({id:movId,fecha:f,tipo:'Egreso',cat:'Planilla',
-      desc:`Quincena ${p.periodoTxt} — ${l.nombre}${l.cargo?' ('+l.cargo+')':''} · ${l.dias} de ${p.diasBase} días`+
+      desc:`${l.nombre}${l.cargo?' ('+l.cargo+')':''} — Q ${textoPeriodoCorto(d1,d2)} · ${l.dias}/${p.diasBase}d`+
            (l.nota?' · '+l.nota:''),
       monto:+l.monto,usr:USR.u});
     l.pagado=true;l.fechaPago=f;l.movId=movId;l.usrPago=USR.u;
