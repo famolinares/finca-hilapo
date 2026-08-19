@@ -3924,9 +3924,9 @@ function textoPeriodoFechas(a,b){
    a los lados para llegar a los botones de Editar/Borrar) */
 function textoPeriodoCorto(a,b){
   const A=partesFecha(a), B=partesFecha(b);
-  const mA=MESES[A.m-1].slice(0,3).toLowerCase(), mB=MESES[B.m-1].slice(0,3).toLowerCase();
-  if(A.m===B.m) return `${A.d}-${B.d} ${mA}`;
-  return `${A.d} ${mA}-${B.d} ${mB}`;
+  const mA=MESES[A.m-1].slice(0,3), mB=MESES[B.m-1].slice(0,3);
+  if(A.m===B.m) return `${A.d}–${B.d} ${mA}`;
+  return `${A.d} ${mA}–${B.d} ${mB}`;
 }
 function periodoRapido(cual){
   const h=new Date(), y=h.getFullYear(), m=h.getMonth()+1, dd=n=>String(n).padStart(2,'0');
@@ -4097,7 +4097,7 @@ function pagarLinea(lid){
   const movId=uid();
   const [d1,d2]=p.periodo.split('_');
   D.mov.push({id:movId,fecha:f,tipo:'Egreso',cat:'Planilla',
-    desc:`${l.nombre}${l.cargo?' ('+l.cargo+')':''} — Q ${textoPeriodoCorto(d1,d2)} · ${l.dias}/${p.diasBase}d`+
+    desc:`${l.nombre}${l.cargo?' · '+l.cargo:''} · Qna ${textoPeriodoCorto(d1,d2)} · ${l.dias}/${p.diasBase} días`+
          (l.nota?' · '+l.nota:''),
     monto:+l.monto,usr:USR.u});
   l.pagado=true;l.fechaPago=f;l.movId=movId;l.usrPago=USR.u;
@@ -4132,7 +4132,7 @@ function pagarSeleccionados(){
   sel.forEach(l=>{
     const movId=uid();
     D.mov.push({id:movId,fecha:f,tipo:'Egreso',cat:'Planilla',
-      desc:`${l.nombre}${l.cargo?' ('+l.cargo+')':''} — Q ${textoPeriodoCorto(d1,d2)} · ${l.dias}/${p.diasBase}d`+
+      desc:`${l.nombre}${l.cargo?' · '+l.cargo:''} · Qna ${textoPeriodoCorto(d1,d2)} · ${l.dias}/${p.diasBase} días`+
            (l.nota?' · '+l.nota:''),
       monto:+l.monto,usr:USR.u});
     l.pagado=true;l.fechaPago=f;l.movId=movId;l.usrPago=USR.u;
