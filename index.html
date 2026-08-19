@@ -2225,12 +2225,12 @@ function tablaDiario(){
   const ing=l.filter(v=>v.tipo==='Ingreso').reduce((s,v)=>s+ +v.monto,0);
   const egr=l.filter(v=>v.tipo==='Egreso').reduce((s,v)=>s+ +v.monto,0);
   const litrosT=l.reduce((s,v)=>s+ +(v.litros||0),0);
-  cont.innerHTML=`<table><thead><tr><th>Fecha</th><th>Tipo</th><th>Categoría</th><th>Descripción</th>
+  cont.innerHTML=`<table><thead><tr><th>Fecha</th><th>Tipo</th><th>Categoría</th><th style="max-width:220px">Descripción</th>
     <th class="num">Litros</th><th class="num">C$/litro</th>
     <th class="num">Monto C$</th><th class="num">US$</th><th>Anotado por</th><th></th></tr></thead><tbody>`+
     l.map(v=>`<tr><td>${fecha(v.fecha)}</td>
       <td><span class="pill ${v.tipo==='Ingreso'?'ing':'egr'}">${v.tipo}</span></td>
-      <td>${esc(v.cat)}</td><td>${esc(v.desc)||'<span style="color:#aaa">—</span>'}</td>
+      <td>${esc(v.cat)}</td><td style="max-width:220px;white-space:normal;word-break:break-word">${esc(v.desc)||'<span style="color:#aaa">—</span>'}</td>
       <td class="num">${v.litros?nf(v.litros):'<span style="color:#ccc">—</span>'}</td>
       <td class="num">${v.precioL?nf(v.precioL):'<span style="color:#ccc">—</span>'}</td>
       <td class="num ${v.tipo==='Ingreso'?'pos':'neg'}">${v.tipo==='Egreso'?'−':''}${nf(v.monto)}</td>
